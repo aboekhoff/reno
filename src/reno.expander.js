@@ -90,8 +90,10 @@ function expandSymbol(e, s) {
     switch (typeof denotation) {
     case 'string'   : throw Error("can't take value of special form: " + s)
     case 'function' : throw Error("can't take value of macro: " + s)
-    default:  	      return denotation || bindGlobal(e, s)
-	    
+    default:  
+	if (denotation) { return denotation }
+	if (s instanceof Symbol.Qualified) { return s }
+	else { return bindGlobal(e, s) }	    
     }
 
 }
@@ -122,6 +124,21 @@ function expandCall(e, x) {
     } else {
 	return expandSexps(e, x)
     }
+}
+
+function expandFrontDottedList(e, x) {
+    var method   = x.first().reify().name.substring(1)
+    var receiver = expandSexp(e, x.rest().first())
+    var args     = expandSexps(e, x.rest().rest())
+
+    var proj = List.create(
+	Symbol.builtin('.'),
+	receiver,
+	method
+    )
+
+    return args.cons(proj)
+
 }
 
 // internal body expansion helpers
@@ -266,8 +283,87 @@ function expandLetrec(e, bindings, body) {
 
 }
 
-function expandQuote(e, x) {}
-function expandQuasiquote(e, x) {}
+function expandQuasiquote(e, x) {
+
+    function isQuasiquote(x) {
+	return maybeResolveToSpecialForm(e, x) == 'quasiquote'
+    }
+
+    function isUnquote(x) {
+	return maybeResolveToSpecialForm(e, x) == 'unquote'
+    }
+
+    function isUnquoteSplicing(x) {
+	return maybeResolveToSpecialForm(e, x) == 'unquote-splicing'
+    }
+
+    function kwote(x) {
+	return List.create(Symbol.builtin('quote'), x)
+    }
+
+    function qa(x) {
+	return List.fromArray(x.map(qq)).cons(Symbol.builtin('acat'))
+    }
+
+    function q(x) {
+
+	if (isUnquote(x)) {
+	    return x.rest().first()
+	}
+
+	if (isQuasiquote(x)) {
+	    return kwote(
+		List.create(
+		    Symbol.builtin('quasiquote'),
+		    x.rest().first()
+		)
+	    )
+	}
+
+	if (x instanceof Symbol) {
+	    return kwote(x)
+	}
+
+	if (x instanceof List) {	    
+	    return List.create(
+		Symbol.builtin('array->list'),
+		qa(x.toArray())
+	    )
+	    return x.map(q)
+	}
+
+	if (x instanceof Array) {
+	    return qa(x)
+	}
+
+	else {
+	    return x
+	}
+	
+
+    }
+
+    function qq(x) {
+	if (isUnquoteSplicing(x)) {
+	    return x.rest().first()
+	}
+
+	else {
+	    return [q(x)]
+	}
+
+    }
+
+    if (isUnquoteSplicing(x)) {
+	return x.rest().first()
+    }
+
+    else {
+	return q(x)
+    }
+
+
+}
 
 function expandSpecialForm(e, x, n) {
 
@@ -280,10 +376,15 @@ function expandSpecialForm(e, x, n) {
 	throw Error('define-macro* outside of top-level')
 
     case 'quote':
-	return x.rest().cons(Symbol.builtin('quote'))
+	return List.create(
+	    Symbol.builtin('quote'),
+	    x.rest().first()
+	)
 
     case 'quasiquote':
-	return expandQuasiquote(x.rest().first())
+	var tmp = expandQuasiquote(e, x.rest().first())	
+	var res = expandSexp(e, tmp)
+	return res
 
     case 'unquote':
 	throw Error('unquote outside of quasiquote')
@@ -345,7 +446,10 @@ function expandSpecialForm(e, x, n) {
 	throw Error('not implemented')
 
     case 'js*':
-	return expandSexp(e, x.rest().first()).cons(Symbol.builtin('js*'))
+	return List.create(
+	    Symbol.builtin('js*'),
+	    expandSexp(e, x.rest().first())
+	)
 
     }
 

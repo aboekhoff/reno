@@ -1,11 +1,47 @@
-// transforms the adhoc s-sexpression trees into
-// fake tagged unions of the form [TAG data_1 ... data_n]
+// transforms the adhoc s-expression trees into
+// faux tagged unions of the form [TAG data_1 ... data_n]
 // so that the compiler can focus on semantics
 // also does some final conversion of quoted symbols and keyword literals
 
 function maybeBuiltin(obj) {
     return obj instanceof Symbol.Qualified &&
 	   obj.namespace == 'reno'
+}
+
+function normalizeQuote(x) {
+    if (x instanceof Symbol.Qualified) {
+	return ['CALL',
+		['GLOBAL', 'reno', 'symbol'],
+		[['CONST', x.namespace],
+		 ['CONST', x.name]]]	    	
+    }
+
+    if (x instanceof Symbol.Simple) {
+	return ['CALL',
+		['GLOBAL', 'reno', 'symbol'],
+		[['CONST', x.name]]]
+    }
+
+    if (x instanceof Symbol.Tagged) {
+	// it may make sense to reify and normalize tagged symbols
+	// will need to see in what situations this arises
+	throw Error('tagged symbol in normalizer')
+    }
+
+    if (x instanceof Array) {
+	return ['ARRAY', x.map(normalizeQuote)]
+    }
+    
+    if (x instanceof List) {
+	return ['CALL', 
+		['GLOBAL', 'reno', 'list'],
+		x.map(normalizeQuote).toArray()]
+    }
+
+    else {
+	return normalize(x)
+    }
+
 }
 
 function normalizeBinding(pair) {
@@ -71,7 +107,9 @@ var NULL_LABEL = normalizeLabel(null)
 
 function normalize(sexp) {
     if (sexp instanceof Keyword) {
-	return ['KEYWORD', sexp.name]
+	return ['CALL', 
+		['GLOBAL', 'reno', 'keyword'],
+		[['CONST', sexp.name]]]
     }
 
     if (sexp instanceof Symbol.Simple) {
@@ -101,6 +139,9 @@ function normalize(sexp) {
     if (maybeBuiltin(sexp[0])) {
 
 	switch(sexp[0].name) {
+
+	case 'quote':
+	    return normalizeQuote(sexp[1])
 
 	case '.':
 	    var node = normalize(sexp[1])

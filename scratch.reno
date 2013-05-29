@@ -1,17 +1,17 @@
-(+ 1 2)
+(set app (fn* ()
+	      (set document (. window "document"))
+	      (set body (. document "body"))
+	      (set canvas (.createElement document "canvas"))
+	      (.appendChild body canvas)
 
-(letrec* ((x "foo") (y "bar"))
-  (prn x y))
+	      (set WIDTH 640)
+	      (set HEIGHT 480)	      
 
-(let* ()
-  (define* x "foo")
-  (define* y "bar")
-  (prn x y))
+	      (set (. canvas "width") WIDTH)
+	      (set (. canvas "height") HEIGHT)
 
-(block :foo
-  (prn "yo bitch")
-  (return-from :foo 42))
+	      (set ctx (.getContext canvas "2d"))
+	      (set (. ctx "fillStyle") "rgb(100, 20, 20)")
+	      (.fillRect ctx 0 0 WIDTH HEIGHT)))
 
-(set square (fn* (x) (* x x)))
-(set restfn (fn* (x :rest xs) [x xs]))
-(prn (restfn (square 1) (square 2) (square 3) (square 4)))
+(set -main (fn* () (set (. window "onload") app)))

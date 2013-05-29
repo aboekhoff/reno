@@ -1,7 +1,9 @@
 // reno runtime support
 
 var RT = {
-    'reno::*out*' : process.stdout,
+
+    'reno::*out*'  : null /* defined at end of file */,
+    'reno::window' : null /* defined at end of file */,	
     'reno::List' : List,
     'reno::Symbol' : Symbol,
     'reno::Keyword' : Keyword,
@@ -10,6 +12,43 @@ var RT = {
     'reno::print' : print,
     'reno::println' : println,
     'reno::newline' : newline,    
+
+    'reno::symbol' : function(namespace, name) {
+	switch(arguments.length) {
+	case 1: 
+	    name = namespace
+	    namespace = null
+	case 2: 
+	    return namespace ?
+		new Symbol.Qualified(namespace, name) :
+		new Symbol.Simple(name)
+	default:
+	    throw Error(
+		'reno::symbol requires 1 or 2 arguments but got ' + 
+		    arguments.length
+	    )
+	}
+    },
+
+    'reno::keyword' : function(x) {
+	if (x instanceof Keyword) {
+	    return x
+	} else {
+	    return new Keyword('' + x)
+	}
+    },
+
+    'reno::list' : List.create,
+    'reno::array->list' : List.fromArray,
+
+    'reno::acat' : function() {
+	var res = []
+	function push(x) { res.push(x) }
+	for (var i=0; i<arguments.length; i++) {
+	    if (arguments[i]) { arguments[i].forEach(push) }
+	}
+	return res
+    },
 
     'reno::+' : function(x, y) {
 	switch(arguments.length) {
@@ -207,4 +246,38 @@ function isTruthy(obj) {
     return !(obj == null || obj === false) 
 }
 
+if (typeof process == 'undefined') {
+
+    RT['reno::*out*'] = {
+	buffer: "",
+
+	write: function(txt) {
+	    this.buffer += txt	    
+	    var lines = this.buffer.split('\n')
+	    for (var i=0; i<lines.length; i++) {
+		if (i<lines.length-1) { 
+		    console.log(lines[i]) 
+		} else {
+		    this.buffer = lines[i]
+		}
+	    }
+	},
+
+	flush: function() {
+	    this.buffer.split('\n').forEach(function(line) {
+		console.log(line)
+	    })
+	    this.buffer = ""
+	}
+
+    }
+
+} else {
+
+    RT['reno::*out*'] = process.stdout
+
+}
+
+RT['reno::window'] = typeof window == 'undefined' ? null : window
+    
 

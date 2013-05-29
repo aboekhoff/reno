@@ -10,7 +10,7 @@ function Position(offset, line, column, origin) {
 Position.prototype.toString = function() {
     return "line " + this.line   + ", " +
 	"column " + this.column + ", " +
-	"at "     + (this.origin || "unknown location");
+	"of "     + (this.origin || "unknown location");
 };
 
 function Reader() {	
@@ -116,6 +116,18 @@ Reader.prototype = {
     pop: function() {
 	var c = this.peek();
 	this.offset++;
+
+	switch(c) {
+	case '\n':
+	case '\r':
+	case '\f':	    
+	    this.line++
+	    this.column = 1
+	    break
+	default:
+	    this.column++
+	}
+
 	return c;
     },
 
@@ -324,7 +336,7 @@ Reader.prototype = {
 	// case '#void' : return undefined;	    
 	}	
 
-	if (/\d|(-\d)/.test(string)) {
+	if (/^(\d|(-\d))/.test(string)) {
 	    return this.parseNumber(string, position);
 	} else {
 	    return this.parseSymbol(string, position);

@@ -373,7 +373,7 @@ function Position(offset, line, column, origin) {
 Position.prototype.toString = function() {
     return "line " + this.line   + ", " +
 	"column " + this.column + ", " +
-	"at "     + (this.origin || "unknown location");
+	"of "     + (this.origin || "unknown location");
 };
 
 function Reader() {	
@@ -479,6 +479,18 @@ Reader.prototype = {
     pop: function() {
 	var c = this.peek();
 	this.offset++;
+
+	switch(c) {
+	case '\n':
+	case '\r':
+	case '\f':	    
+	    this.line++
+	    this.column = 1
+	    break
+	default:
+	    this.column++
+	}
+
 	return c;
     },
 
@@ -687,7 +699,7 @@ Reader.prototype = {
 	// case '#void' : return undefined;	    
 	}	
 
-	if (/\d|(-\d)/.test(string)) {
+	if (/^(\d|(-\d))/.test(string)) {
 	    return this.parseNumber(string, position);
 	} else {
 	    return this.parseSymbol(string, position);
@@ -794,8 +806,10 @@ function expandSymbol(e, s) {
     switch (typeof denotation) {
     case 'string'   : throw Error("can't take value of special form: " + s)
     case 'function' : throw Error("can't take value of macro: " + s)
-    default:  	      return denotation || bindGlobal(e, s)
-	    
+    default:  
+	if (denotation) { return denotation }
+	if (s instanceof Symbol.Qualified) { return s }
+	else { return bindGlobal(e, s) }	    
     }
 
 }
@@ -826,6 +840,21 @@ function expandCall(e, x) {
     } else {
 	return expandSexps(e, x)
     }
+}
+
+function expandFrontDottedList(e, x) {
+    var method   = x.first().reify().name.substring(1)
+    var receiver = expandSexp(e, x.rest().first())
+    var args     = expandSexps(e, x.rest().rest())
+
+    var proj = List.create(
+	Symbol.builtin('.'),
+	receiver,
+	method
+    )
+
+    return args.cons(proj)
+
 }
 
 // internal body expansion helpers
@@ -970,8 +999,87 @@ function expandLetrec(e, bindings, body) {
 
 }
 
-function expandQuote(e, x) {}
-function expandQuasiquote(e, x) {}
+function expandQuasiquote(e, x) {
+
+    function isQuasiquote(x) {
+	return maybeResolveToSpecialForm(e, x) == 'quasiquote'
+    }
+
+    function isUnquote(x) {
+	return maybeResolveToSpecialForm(e, x) == 'unquote'
+    }
+
+    function isUnquoteSplicing(x) {
+	return maybeResolveToSpecialForm(e, x) == 'unquote-splicing'
+    }
+
+    function kwote(x) {
+	return List.create(Symbol.builtin('quote'), x)
+    }
+
+    function qa(x) {
+	return List.fromArray(x.map(qq)).cons(Symbol.builtin('acat'))
+    }
+
+    function q(x) {
+
+	if (isUnquote(x)) {
+	    return x.rest().first()
+	}
+
+	if (isQuasiquote(x)) {
+	    return kwote(
+		List.create(
+		    Symbol.builtin('quasiquote'),
+		    x.rest().first()
+		)
+	    )
+	}
+
+	if (x instanceof Symbol) {
+	    return kwote(x)
+	}
+
+	if (x instanceof List) {	    
+	    return List.create(
+		Symbol.builtin('array->list'),
+		qa(x.toArray())
+	    )
+	    return x.map(q)
+	}
+
+	if (x instanceof Array) {
+	    return qa(x)
+	}
+
+	else {
+	    return x
+	}
+	
+
+    }
+
+    function qq(x) {
+	if (isUnquoteSplicing(x)) {
+	    return x.rest().first()
+	}
+
+	else {
+	    return [q(x)]
+	}
+
+    }
+
+    if (isUnquoteSplicing(x)) {
+	return x.rest().first()
+    }
+
+    else {
+	return q(x)
+    }
+
+
+}
 
 function expandSpecialForm(e, x, n) {
 
@@ -984,10 +1092,15 @@ function expandSpecialForm(e, x, n) {
 	throw Error('define-macro* outside of top-level')
 
     case 'quote':
-	return x.rest().cons(Symbol.builtin('quote'))
+	return List.create(
+	    Symbol.builtin('quote'),
+	    x.rest().first()
+	)
 
     case 'quasiquote':
-	return expandQuasiquote(x.rest().first())
+	var tmp = expandQuasiquote(e, x.rest().first())	
+	var res = expandSexp(e, tmp)
+	return res
 
     case 'unquote':
 	throw Error('unquote outside of quasiquote')
@@ -1049,7 +1162,10 @@ function expandSpecialForm(e, x, n) {
 	throw Error('not implemented')
 
     case 'js*':
-	return expandSexp(e, x.rest().first()).cons(Symbol.builtin('js*'))
+	return List.create(
+	    Symbol.builtin('js*'),
+	    expandSexp(e, x.rest().first())
+	)
 
     }
 
@@ -1060,14 +1176,50 @@ function expandSpecialForm(e, x, n) {
 
 // BEGIN reno.normalizer.js
 
-// transforms the adhoc s-sexpression trees into
-// fake tagged unions of the form [TAG data_1 ... data_n]
+// transforms the adhoc s-expression trees into
+// faux tagged unions of the form [TAG data_1 ... data_n]
 // so that the compiler can focus on semantics
 // also does some final conversion of quoted symbols and keyword literals
 
 function maybeBuiltin(obj) {
     return obj instanceof Symbol.Qualified &&
 	   obj.namespace == 'reno'
+}
+
+function normalizeQuote(x) {
+    if (x instanceof Symbol.Qualified) {
+	return ['CALL',
+		['GLOBAL', 'reno', 'symbol'],
+		[['CONST', x.namespace],
+		 ['CONST', x.name]]]	    	
+    }
+
+    if (x instanceof Symbol.Simple) {
+	return ['CALL',
+		['GLOBAL', 'reno', 'symbol'],
+		[['CONST', x.name]]]
+    }
+
+    if (x instanceof Symbol.Tagged) {
+	// it may make sense to reify and normalize tagged symbols
+	// will need to see in what situations this arises
+	throw Error('tagged symbol in normalizer')
+    }
+
+    if (x instanceof Array) {
+	return ['ARRAY', x.map(normalizeQuote)]
+    }
+    
+    if (x instanceof List) {
+	return ['CALL', 
+		['GLOBAL', 'reno', 'list'],
+		x.map(normalizeQuote).toArray()]
+    }
+
+    else {
+	return normalize(x)
+    }
+
 }
 
 function normalizeBinding(pair) {
@@ -1133,7 +1285,9 @@ var NULL_LABEL = normalizeLabel(null)
 
 function normalize(sexp) {
     if (sexp instanceof Keyword) {
-	return ['KEYWORD', sexp.name]
+	return ['CALL', 
+		['GLOBAL', 'reno', 'keyword'],
+		[['CONST', sexp.name]]]
     }
 
     if (sexp instanceof Symbol.Simple) {
@@ -1163,6 +1317,9 @@ function normalize(sexp) {
     if (maybeBuiltin(sexp[0])) {
 
 	switch(sexp[0].name) {
+
+	case 'quote':
+	    return normalizeQuote(sexp[1])
 
 	case '.':
 	    var node = normalize(sexp[1])
@@ -1964,8 +2121,6 @@ Emitter.prototype = {
 // still not sure if we want to implement these in javascript or not
 // but they make writing printers much easier
 
-var $out = process.stdout
-
 var GENERIC_KEY = 'reno::generic-key'
 var DEFAULT_KEY = 'reno::generic-default'
 var CUSTOM_NAME = 'reno::name'
@@ -2073,14 +2228,30 @@ Generic.addMethods(
 	p.write("]")
     },
 
-    List, function(xs, p, e) {
-	p.write("(")
-	_print_sequence(xs.toArray(), p, e)
-	p.write(")")	
+    List.Nil, function(xs, p, e) {
+	p.write("()")
+    },
+
+    List.Cons, function(xs, p, e) {
+	var head = xs.first()
+
+	if (head instanceof Symbol.Qualified &&
+	    head.namespace == 'reno' &&
+	    head.name == 'quote') {
+	    p.write("'")
+	    _print(xs.rest().first(), p, e)
+	} 
+
+	else {
+	    p.write("(")
+	    _print_sequence(xs.toArray(), p, e)
+	    p.write(")")	
+	}
+
     },
 
     Symbol.Qualified, function(x, p, e) {
-	p.write("##" + x.namespace + "#" + x.name)
+	p.write(x.namespace + "::" + x.name)
     },
 
     Symbol.Tagged, function(x, p, e) {
@@ -2127,7 +2298,9 @@ function println() {
 // reno runtime support
 
 var RT = {
-    'reno::*out*' : process.stdout,
+
+    'reno::*out*'  : null /* defined at end of file */,
+    'reno::window' : null /* defined at end of file */,	
     'reno::List' : List,
     'reno::Symbol' : Symbol,
     'reno::Keyword' : Keyword,
@@ -2136,6 +2309,43 @@ var RT = {
     'reno::print' : print,
     'reno::println' : println,
     'reno::newline' : newline,    
+
+    'reno::symbol' : function(namespace, name) {
+	switch(arguments.length) {
+	case 1: 
+	    name = namespace
+	    namespace = null
+	case 2: 
+	    return namespace ?
+		new Symbol.Qualified(namespace, name) :
+		new Symbol.Simple(name)
+	default:
+	    throw Error(
+		'reno::symbol requires 1 or 2 arguments but got ' + 
+		    arguments.length
+	    )
+	}
+    },
+
+    'reno::keyword' : function(x) {
+	if (x instanceof Keyword) {
+	    return x
+	} else {
+	    return new Keyword('' + x)
+	}
+    },
+
+    'reno::list' : List.create,
+    'reno::array->list' : List.fromArray,
+
+    'reno::acat' : function() {
+	var res = []
+	function push(x) { res.push(x) }
+	for (var i=0; i<arguments.length; i++) {
+	    if (arguments[i]) { arguments[i].forEach(push) }
+	}
+	return res
+    },
 
     'reno::+' : function(x, y) {
 	switch(arguments.length) {
@@ -2333,6 +2543,40 @@ function isTruthy(obj) {
     return !(obj == null || obj === false) 
 }
 
+if (typeof process == 'undefined') {
+
+    RT['reno::*out*'] = {
+	buffer: "",
+
+	write: function(txt) {
+	    this.buffer += txt	    
+	    var lines = this.buffer.split('\n')
+	    for (var i=0; i<lines.length; i++) {
+		if (i<lines.length-1) { 
+		    console.log(lines[i]) 
+		} else {
+		    this.buffer = lines[i]
+		}
+	    }
+	},
+
+	flush: function() {
+	    this.buffer.split('\n').forEach(function(line) {
+		console.log(line)
+	    })
+	    this.buffer = ""
+	}
+
+    }
+
+} else {
+
+    RT['reno::*out*'] = process.stdout
+
+}
+
+RT['reno::window'] = typeof window == 'undefined' ? null : window
+    
 
 
 // END reno.runtime.js
@@ -2369,38 +2613,46 @@ function expandFile(file) {
 
 	while (!rdr.isEmpty()) {	
 
+	    var pos = rdr.getPosition()
+
+	    function printHeader(txt) {
+		println('[' + txt + '] ' + pos)  
+	    }
+
+	    printHeader('READ')
 	    var sexp  = rdr.readSexp() 
-	    println('[READ]') 
 	    prn(sexp) 
 	    newline()
 
+	    printHeader('EXPAND')
 	    var esexp1 = expandSexp(reno, sexp) 
-	    println('[EXPAND]')
 	    prn(esexp1) 
 	    newline()
 
+	    /*
+	    printHeader('REEXPAND')
 	    var esexp2 = expandSexp(reno, esexp1)
-	    println('[REEXPAND]')
 	    prn(esexp2)
 	    newline()
+	    */
 
-	    var nsexp = normalize(esexp2)
-	    println('[NORMALIZE]')
+	    printHeader('NORMALIZE')
+	    var nsexp = normalize(esexp1)
 	    p(nsexp)
 	    newline()
 
+	    printHeader('COMPILE')
 	    var jsast = Context.compile(nsexp, true)
-	    println('[COMPILE]')
 	    p(jsast)
 	    newline()
 
+	    printHeader('EMIT')
 	    var js = Emitter.emitProgram(jsast)
-	    println('[EMIT]')
 	    println(js)
 	    newline()
 	    
+	    printHeader('EVAL')
 	    var result = Function('RT', js)(RT)
-	    println('[EVAL]')
 	    prn(result)
 	    newline()
 
@@ -2410,14 +2662,102 @@ function expandFile(file) {
 
     catch(e) {
 
-	println('[ERROR]')
-	println(e.toString())
+	printHeader('ERROR')
+	throw(e)
 
     }
 
 }
 
-exports.load = expandFile
+// slightly tricky spot
+// for evaluation, 
 
+function compileFile(file, main) {
+
+    var buf = []
+    
+    try {
+
+	var fs  = require('fs')
+	var src = fs.readFileSync(file, 'utf8')
+	var rdr = Reader.create({input: src, origin: file})
+
+	while (!rdr.isEmpty()) {	
+
+	    var pos = rdr.getPosition()
+
+	    function printHeader(txt) {
+		println('[' + txt + '] ' + pos)  
+	    }
+
+	    printHeader('READ')
+	    var sexp  = rdr.readSexp() 
+	    prn(sexp) 
+	    newline()
+
+	    printHeader('EXPAND')
+	    var esexp1 = expandSexp(reno, sexp) 
+	    prn(esexp1) 
+	    newline()
+
+	    /*
+	    printHeader('REEXPAND')
+	    var esexp2 = expandSexp(reno, esexp1)
+	    prn(esexp2)
+	    newline()
+	    */
+
+	    printHeader('NORMALIZE')
+	    var nsexp = normalize(esexp1)
+	    p(nsexp)
+	    newline()
+
+	    // emit for toplevel eval
+
+	    printHeader('COMPILE')
+	    var jsast = Context.compile(nsexp, true)
+	    p(jsast)
+	    newline()
+
+	    printHeader('EMIT')
+	    var js = Emitter.emitProgram(jsast)
+	    println(js)
+	    newline()
+	    
+	    printHeader('EVAL')
+	    var result = Function('RT', js)(RT)
+	    prn(result)
+	    newline()
+
+	    // printHeader('AOT_COMPILE')
+	    var jsast = Context.compile(nsexp, false)
+
+	    // printHeader('AOT_EMIT')
+	    var js = Emitter.emitProgram(jsast)
+	    
+	    buf.push(js)	    
+
+	}
+
+    }    
+
+    catch(e) {
+
+	printHeader('ERROR')
+	println('aborting compilation')
+	throw(e)
+
+    }
+
+    if (main) {
+	buf.push('RT[' + JSON.stringify(main) + ']()')
+    }
+
+    return buf.join("\n")    
+
+}
+
+exports.expandFile = expandFile
+exports.compileFile = compileFile
 
 // END reno.main.js

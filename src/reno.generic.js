@@ -1,8 +1,6 @@
 // still not sure if we want to implement these in javascript or not
 // but they make writing printers much easier
 
-var $out = process.stdout
-
 var GENERIC_KEY = 'reno::generic-key'
 var DEFAULT_KEY = 'reno::generic-default'
 var CUSTOM_NAME = 'reno::name'
@@ -110,14 +108,30 @@ Generic.addMethods(
 	p.write("]")
     },
 
-    List, function(xs, p, e) {
-	p.write("(")
-	_print_sequence(xs.toArray(), p, e)
-	p.write(")")	
+    List.Nil, function(xs, p, e) {
+	p.write("()")
+    },
+
+    List.Cons, function(xs, p, e) {
+	var head = xs.first()
+
+	if (head instanceof Symbol.Qualified &&
+	    head.namespace == 'reno' &&
+	    head.name == 'quote') {
+	    p.write("'")
+	    _print(xs.rest().first(), p, e)
+	} 
+
+	else {
+	    p.write("(")
+	    _print_sequence(xs.toArray(), p, e)
+	    p.write(")")	
+	}
+
     },
 
     Symbol.Qualified, function(x, p, e) {
-	p.write("##" + x.namespace + "#" + x.name)
+	p.write(x.namespace + "::" + x.name)
     },
 
     Symbol.Tagged, function(x, p, e) {
