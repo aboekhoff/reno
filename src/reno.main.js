@@ -28,12 +28,12 @@ function expandTopLevel(config) {
 
 	    publish('reno:macroexpand-toplevel-sexp', {sexp: sexp})
 
-	    if (maybeResolveToDo(sexp)) {
+	    if (maybeResolveToDo(env, sexp)) {
 		buf = sexp.rest().toArray().concat(buf)
 		continue expanding
 	    }
 
-	    if (maybeResolveToDefineMacro(sexp)) {
+	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
 		var sym      = sexp.rest().first()
 		var sexp     = sexp.rest().rest().first()
@@ -57,14 +57,15 @@ function expandTopLevel(config) {
 		})
 
 		continue expanding
+
 	    }
 
 	    else {
 
-		if (maybeResolveToDefine(sexp)) {
+		if (maybeResolveToDefine(env, sexp)) {
 		    var sym  = sexp.rest().first()
-		    var expr = sexp.rest().rest().first()
 		    var loc  = bindGlobal(env, sym)		
+		    var expr = sexp.rest().rest().first()
 		    sexp = List.create(Symbol.builtin('set'), loc, expr)
 		}	    
 		
@@ -125,9 +126,30 @@ function compileReader(reader, main) {
 	newline()
     }
 
+    function handleCompile(ast) {
+	println('[COMPILE]')
+	p(ast)
+	newline()
+    }
+
+    function handleNormalize(ast) {
+	println(['NORMALIZE'])
+	p(ast)
+	newline()
+    }
+
+    function handleExpansion(esexp) {
+	println(['EXPAND'])
+	prn(esexp)
+	newline()
+    }
+
     subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     subscribe('reno:emit-toplevel-expression', handleExpression)
     subscribe('reno:emit-toplevel-macro', handleMacro)
+    subscribe('reno:compile', handleCompile)
+    subscribe('reno:normalize', handleNormalize)
+    subscribe('reno:expand', handleExpansion)
 
     // skip env creation for now
 

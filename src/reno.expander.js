@@ -198,26 +198,30 @@ function expandBody(e, xs) {
 
     }    
 
+    var body;
+
+    switch(exprs.length) {
+    case 0:  body = null
+    case 1:  body = exprs[0]
+    default: body = List.fromArray(exprs).cons(Symbol.builtin('do'))
+    }
+
     if (defs.length > 0) {
 	defs = defs.map(function(pair) {
 	    var sym  = pair.first()
 	    var expr = pair.rest().first()
 	    return List.create(sym, expandSexp(e, expr))
 	})
+
+	return List.create(
+	    Symbol.builtin('letrec*'),
+	    List.fromArray(defs),
+	    body
+	)
     }
 
-    if (defs.length > 0) {
-	return List.fromArray(exprs).
-	    cons(List.fromArray(defs)).
-	    cons(Symbol.builtin('letrec*'))
-    }
-
-    {
-	switch(exprs.length) {
-	case 0:  return null
-	case 1:  return exprs[0]
-	default: return List.fromArray(exprs).cons(Symbol.builtin('do'))
-	}
+    else {
+	return body
     }
 
 }

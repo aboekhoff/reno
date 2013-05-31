@@ -59,7 +59,7 @@ function normalizeBindings(bindings) {
 }
 
 function normalizeSeq(seq) {
-    return seq.map(normalize)
+    return seq.map(normalizeSexp)
 }
 
 function normalizeLabel(obj) {

@@ -1,6 +1,6 @@
 function emit(program, options) {
     var js = Emitter.emitProgram(program, options)
-    publish('reno.emit', js)
+    publish('reno:emit', js)
     return js
 }
 

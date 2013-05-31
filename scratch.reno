@@ -1,18 +1,20 @@
-(set app (fn* ()
-	      (prn "and we are live")
-	      (set document (. window "document"))
-	      (set body (. document "body"))
-	      (set canvas (.createElement document "canvas"))
-	      (.appendChild body canvas)
+(define* app
+  (fn* ()
+       (prn "and we are live")
+       (define* document (. window "document"))
+       (define* body (. document "body"))
+       (define* canvas (.createElement document "canvas"))
+       (define* context (.getContext canvas "2d"))       
+       (define* WIDTH 640)
+       (define* HEIGHT 480)	      
 
-	      (set WIDTH 640)
-	      (set HEIGHT 480)	      
+       (.appendChild body canvas)
+       (set (. canvas "width") WIDTH)
+       (set (. canvas "height") HEIGHT)
 
-	      (set (. canvas "width") WIDTH)
-	      (set (. canvas "height") HEIGHT)
+       (set (. context "fillStyle") "rgb(100, 20, 20)")
+       (.fillRect context 0 0 WIDTH HEIGHT)))
 
-	      (set ctx (.getContext canvas "2d"))
-	      (set (. ctx "fillStyle") "rgb(100, 20, 20)")
-	      (.fillRect ctx 0 0 WIDTH HEIGHT)))
+(define* -main
+  (fn* () (set (. window "onload") app)))
 
-(set -main (fn* () (set (. window "onload") app)))

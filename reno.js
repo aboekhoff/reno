@@ -923,26 +923,30 @@ function expandBody(e, xs) {
 
     }    
 
+    var body;
+
+    switch(exprs.length) {
+    case 0:  body = null
+    case 1:  body = exprs[0]
+    default: body = List.fromArray(exprs).cons(Symbol.builtin('do'))
+    }
+
     if (defs.length > 0) {
 	defs = defs.map(function(pair) {
 	    var sym  = pair.first()
 	    var expr = pair.rest().first()
 	    return List.create(sym, expandSexp(e, expr))
 	})
+
+	return List.create(
+	    Symbol.builtin('letrec*'),
+	    List.fromArray(defs),
+	    body
+	)
     }
 
-    if (defs.length > 0) {
-	return List.fromArray(exprs).
-	    cons(List.fromArray(defs)).
-	    cons(Symbol.builtin('letrec*'))
-    }
-
-    {
-	switch(exprs.length) {
-	case 0:  return null
-	case 1:  return exprs[0]
-	default: return List.fromArray(exprs).cons(Symbol.builtin('do'))
-	}
+    else {
+	return body
     }
 
 }
@@ -1258,7 +1262,7 @@ function normalizeBindings(bindings) {
 }
 
 function normalizeSeq(seq) {
-    return seq.map(normalize)
+    return seq.map(normalizeSexp)
 }
 
 function normalizeLabel(obj) {
@@ -1824,7 +1828,7 @@ Context.prototype = {
 
 function emit(program, options) {
     var js = Emitter.emitProgram(program, options)
-    publish('reno.emit', js)
+    publish('reno:emit', js)
     return js
 }
 
@@ -2684,12 +2688,12 @@ function expandTopLevel(config) {
 
 	    publish('reno:macroexpand-toplevel-sexp', {sexp: sexp})
 
-	    if (maybeResolveToDo(sexp)) {
+	    if (maybeResolveToDo(env, sexp)) {
 		buf = sexp.rest().toArray().concat(buf)
 		continue expanding
 	    }
 
-	    if (maybeResolveToDefineMacro(sexp)) {
+	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
 		var sym      = sexp.rest().first()
 		var sexp     = sexp.rest().rest().first()
@@ -2713,14 +2717,15 @@ function expandTopLevel(config) {
 		})
 
 		continue expanding
+
 	    }
 
 	    else {
 
-		if (maybeResolveToDefine(sexp)) {
+		if (maybeResolveToDefine(env, sexp)) {
 		    var sym  = sexp.rest().first()
-		    var expr = sexp.rest().rest().first()
 		    var loc  = bindGlobal(env, sym)		
+		    var expr = sexp.rest().rest().first()
 		    sexp = List.create(Symbol.builtin('set'), loc, expr)
 		}	    
 		
@@ -2781,9 +2786,30 @@ function compileReader(reader, main) {
 	newline()
     }
 
+    function handleCompile(ast) {
+	println('[COMPILE]')
+	p(ast)
+	newline()
+    }
+
+    function handleNormalize(ast) {
+	println(['NORMALIZE'])
+	p(ast)
+	newline()
+    }
+
+    function handleExpansion(esexp) {
+	println(['EXPAND'])
+	prn(esexp)
+	newline()
+    }
+
     subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     subscribe('reno:emit-toplevel-expression', handleExpression)
     subscribe('reno:emit-toplevel-macro', handleMacro)
+    subscribe('reno:compile', handleCompile)
+    subscribe('reno:normalize', handleNormalize)
+    subscribe('reno:expand', handleExpansion)
 
     // skip env creation for now
 

@@ -1,18 +1,18 @@
 
 RT["reno::app"] = function() {
-    var local_1_0;
+    var local_1_0, local_1_1, local_1_2, local_1_3, local_1_4, local_1_5, local_1_6;
     RT["reno::prn"]("and we are live");
-    RT["reno::document"] = RT["reno::window"]["document"];
-    RT["reno::body"] = RT["reno::document"]["body"];
-    RT["reno::canvas"] = RT["reno::document"]["createElement"]("canvas");
-    RT["reno::body"]["appendChild"](RT["reno::canvas"]);
-    RT["reno::WIDTH"] = 640;
-    RT["reno::HEIGHT"] = 480;
-    RT["reno::canvas"]["width"] = RT["reno::WIDTH"];
-    RT["reno::canvas"]["height"] = RT["reno::HEIGHT"];
-    RT["reno::ctx"] = RT["reno::canvas"]["getContext"]("2d");
-    RT["reno::ctx"]["fillStyle"] = "rgb(100, 20, 20)";
-    local_1_0 = RT["reno::ctx"]["fillRect"](0, 0, RT["reno::WIDTH"], RT["reno::HEIGHT"]);
+    local_1_1 = RT["reno::window"]["document"];
+    local_1_2 = local_1_1["body"];
+    local_1_3 = local_1_1["createElement"]("canvas");
+    local_1_4 = local_1_3["getContext"]("2d");
+    local_1_5 = 640;
+    local_1_6 = 480;
+    local_1_2["appendChild"](local_1_3);
+    local_1_3["width"] = local_1_5;
+    local_1_3["height"] = local_1_6;
+    local_1_4["fillStyle"] = "rgb(100, 20, 20)";
+    local_1_0 = local_1_4["fillRect"](0, 0, local_1_5, local_1_6);
     return local_1_0;
 };
 
