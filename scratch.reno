@@ -1,4 +1,5 @@
 (set app (fn* ()
+	      (prn "and we are live")
 	      (set document (. window "document"))
 	      (set body (. document "body"))
 	      (set canvas (.createElement document "canvas"))

@@ -390,6 +390,7 @@ var RT = {
 
     'reno::*out*'  : null /* defined at end of file */,
     'reno::window' : null /* defined at end of file */,	
+
     'reno::List' : List,
     'reno::Symbol' : Symbol,
     'reno::Keyword' : Keyword,
@@ -608,17 +609,13 @@ var RT = {
     'reno::apply' : function(f) {
 	var len  = arguments.length
 	var more = arguments[len-1]
-	var mlen = more.length
-	var args = new Array((len-2) + mlen)
+	var args = []
 
 	for (var i=0; i<len-2; i++) {
-	    args[i] = arguments[i+1]
+	    args.push(arguments[i])
 	}
 
-	for (var j=0; j<mlen; j++) {
-	    args[i+j] = more[j]
-	}
-
+	more.forEach(function(x) { args.push(x) })
 	return f.apply(null, args)
     }
 

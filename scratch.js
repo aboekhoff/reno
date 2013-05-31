@@ -1,6 +1,7 @@
 
 RT["reno::app"] = function() {
     var local_1_0;
+    RT["reno::prn"]("and we are live");
     RT["reno::document"] = RT["reno::window"]["document"];
     RT["reno::body"] = RT["reno::document"]["body"];
     RT["reno::canvas"] = RT["reno::document"]["createElement"]("canvas");

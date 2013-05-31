@@ -537,8 +537,17 @@ Reader.prototype = {
 	}
     },
 
+    read: function() {
+	this.readWhitespace();
+	var pos  = this.getPosition()
+	var sexp = this.readSexp()
+	publish('reno:read', { sexp: sexp, position: pos})
+	return sexp
+    },
+
     readSexp: function() {
 	this.readWhitespace();
+
 	var nextChar = this.peek();
 
 	switch (nextChar) {
@@ -714,6 +723,12 @@ Reader.prototype = {
 
 // BEGIN reno.expander.js
 
+function expand(e, x) {
+    var sexp = expandSexp(e, x)
+    publish('reno:expand', sexp)
+    return sexp
+}
+
 function macroexpand1(e, x) {
     var macro = maybeResolveToMacro(e, x)
     return macro ? macro(e, x) : x
@@ -774,6 +789,12 @@ function bindGlobal(e, s) {
     var qs = rs.qualify(e.name)
     Env.findOrDie(e.name).putSymbol(s, qs)
     return qs
+}
+
+function bindMacro(e, s, m) {
+    var rs = s.reify()
+    Env.findOrDie(e.name).putSymbol(s, m)
+    return rs
 }
 
 function expandSexp(e, x) {
@@ -1181,6 +1202,12 @@ function expandSpecialForm(e, x, n) {
 // so that the compiler can focus on semantics
 // also does some final conversion of quoted symbols and keyword literals
 
+function normalize(sexp) {
+    var nsexp = normalizeSexp(sexp)
+    publish('reno:normalize', nsexp)
+    return nsexp
+}
+
 function maybeBuiltin(obj) {
     return obj instanceof Symbol.Qualified &&
 	   obj.namespace == 'reno'
@@ -1217,13 +1244,13 @@ function normalizeQuote(x) {
     }
 
     else {
-	return normalize(x)
+	return normalizeSexp(x)
     }
 
 }
 
 function normalizeBinding(pair) {
-    return [normalize(pair.first()), normalize(pair.rest().first())]
+    return [normalizeSexp(pair.first()), normalizeSexp(pair.rest().first())]
 }
 
 function normalizeBindings(bindings) {
@@ -1239,7 +1266,7 @@ function normalizeLabel(obj) {
 }
 
 function normalizeFn(args, body) {
-    body = normalize(body)
+    body = normalizeSexp(body)
 
     var pargs = []
     var rest  = null
@@ -1250,12 +1277,12 @@ function normalizeFn(args, body) {
 	var arg = args[i++]
 
 	if (arg instanceof Symbol) {
-	    pargs.push(normalize(arg))
+	    pargs.push(normalizeSexp(arg))
 	} 
 
 	if (arg instanceof Keyword) {
 	    var key = arg
-	    var arg = normalize(args[i++])
+	    var arg = normalizeSexp(args[i++])
 	    switch (key.name) {
 	    case 'rest':
 		rest = arg
@@ -1283,7 +1310,7 @@ function normalizeFn(args, body) {
 
 var NULL_LABEL = normalizeLabel(null)
 
-function normalize(sexp) {
+function normalizeSexp(sexp) {
     if (sexp instanceof Keyword) {
 	return ['CALL', 
 		['GLOBAL', 'reno', 'keyword'],
@@ -1322,9 +1349,9 @@ function normalize(sexp) {
 	    return normalizeQuote(sexp[1])
 
 	case '.':
-	    var node = normalize(sexp[1])
+	    var node = normalizeSexp(sexp[1])
 	    for (var i=2; i<sexp.length; i++) {
-		node = ['PROPERTY', node, normalize(sexp[i])]
+		node = ['PROPERTY', node, normalizeSexp(sexp[i])]
 	    }
 	    return node
 
@@ -1337,58 +1364,64 @@ function normalize(sexp) {
 
 	case 'if' : 
 	    return ['IF', 
-		    normalize(sexp[1]), 
-		    normalize(sexp[2]),
-		    normalize(sexp[3])]
+		    normalizeSexp(sexp[1]), 
+		    normalizeSexp(sexp[2]),
+		    normalizeSexp(sexp[3])]
 
 	case 'let*' :
 	    return ['LET',
 		    normalizeBindings(sexp[1]),
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'letrec*' :
 	    return ['LETREC',
 		    normalizeBindings(sexp[1]),
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'unwind-protect' :
 	    return normalizeUnwindProtect(sexp)
 	
 	case 'set' :
-	    return ['SET', normalize(sexp[1]), normalize(sexp[2])]
+	    return ['SET', normalizeSexp(sexp[1]), normalizeSexp(sexp[2])]
 
 	case 'loop' : 
-	    return ['LOOP', normalize(sexp[1])]
+	    return ['LOOP', normalizeSexp(sexp[1])]
 
 	case 'block' : 
 	    return ['BLOCK', 
 		    normalizeLabel(sexp[1]), 
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 	    
 	case 'return-from':
 	    return ['RETURN_FROM', 
 		    normalizeLabel(sexp[1]), 
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'throw':
-	    return ['THROW', normalize(sexp[1])]
+	    return ['THROW', normalizeSexp(sexp[1])]
 
 	case 'js*':
 	    return ['RAW', sexp[1]]
 
 	case 'new':
-	    return ['NEW', normalize(sexp[1]), normalizeSeq(sexp.slice(2))]
+	    return ['NEW', normalizeSexp(sexp[1]), normalizeSeq(sexp.slice(2))]
 
 	}   
     }
 
-    return ['CALL', normalize(sexp[0]), normalizeSeq(sexp.slice(1))]
+    return ['CALL', normalizeSexp(sexp[0]), normalizeSeq(sexp.slice(1))]
 
 }
 
 // END reno.normalizer.js
 
 // BEGIN reno.compiler.js
+
+function compile(normalizedSexp, wantReturn) {
+    var ast = Context.compile(normalizedSexp, wantReturn)
+    publish('reno:compile', ast)
+    return ast
+}
 
 function tracerFor(node) {    
     function tracer(val) {
@@ -1788,6 +1821,12 @@ Context.prototype = {
 // END reno.compiler.js
 
 // BEGIN reno.emitter.js
+
+function emit(program, options) {
+    var js = Emitter.emitProgram(program, options)
+    publish('reno.emit', js)
+    return js
+}
 
 function Emitter() {
     this.buffer    = []
@@ -2293,6 +2332,41 @@ function println() {
 
 // END reno.generic.js
 
+// BEGIN reno.pubsub.js
+
+var subscriptions = {}
+
+function getSubscribers(key) {
+    if (!subscriptions[key]) { subscriptions[key] = [] }
+    return subscriptions[key]
+}
+
+function subscribe(key, callback) {
+    var subscribers = getSubscribers(key)
+    for (var i=0; i<=subscribers.length; i++) {
+	if (!subscribers[i]) {
+	    subscribers[i] = callback
+	    callback['reno:pubsub:' + key] = i
+	    return
+	}
+    }
+}
+
+function unsubscribe(key, callback) {
+    var index       = callback['reno:pubsub:' + key]
+    var subscribers = getSubscribers(key)
+    subscribers[index] = null
+}
+
+function publish(key, data) {
+    getSubscribers(key).forEach(function(subscriber) {
+	if (subscriber) { subscriber(data) }
+    })
+}
+
+
+// END reno.pubsub.js
+
 // BEGIN reno.runtime.js
 
 // reno runtime support
@@ -2301,6 +2375,7 @@ var RT = {
 
     'reno::*out*'  : null /* defined at end of file */,
     'reno::window' : null /* defined at end of file */,	
+
     'reno::List' : List,
     'reno::Symbol' : Symbol,
     'reno::Keyword' : Keyword,
@@ -2519,17 +2594,13 @@ var RT = {
     'reno::apply' : function(f) {
 	var len  = arguments.length
 	var more = arguments[len-1]
-	var mlen = more.length
-	var args = new Array((len-2) + mlen)
+	var args = []
 
 	for (var i=0; i<len-2; i++) {
-	    args[i] = arguments[i+1]
+	    args.push(arguments[i])
 	}
 
-	for (var j=0; j<mlen; j++) {
-	    args[i+j] = more[j]
-	}
-
+	more.forEach(function(x) { args.push(x) })
 	return f.apply(null, args)
     }
 
@@ -2598,166 +2669,141 @@ specialForms.forEach(function(name) {
     reno.putSymbol(new Symbol.Simple(name), name)
 })
 
+function expandTopLevel(config) {
+    var rdr       = config.reader 
+    var env       = config.env    || RT['reno::*env*']
+    var buf       = config.buffer || []
+
+    reading:while (!rdr.isEmpty()) {
+
+	var sexp = rdr.read()
+	buf.push(sexp)	
+	
+	expanding:while(buf.length > 0) {
+	    var sexp = macroexpand(env, buf.shift())
+
+	    publish('reno:macroexpand-toplevel-sexp', {sexp: sexp})
+
+	    if (maybeResolveToDo(sexp)) {
+		buf = sexp.rest().toArray().concat(buf)
+		continue expanding
+	    }
+
+	    if (maybeResolveToDefineMacro(sexp)) {
+
+		var sym      = sexp.rest().first()
+		var sexp     = sexp.rest().rest().first()
+		var esexp    = expand(env, sexp)
+		var nsexp    = normalize(sexp)
+		var jsast    = compile(nsexp, true)		
+		var js       = emit(jsast)
+
+
+		var warhead  = Function('RT', js)		
+		var submacro = warhead(RT)
+		var macro    = function(sexp, callingEnv) {
+		    return submacro(sexp, callingEnv, env)
+		}
+
+		var qsym = bindMacro(env, sym, macro)
+
+		publish('reno:emit-toplevel-macro', {
+		    symbol: qsym,
+		    js:     js
+		})
+
+		continue expanding
+	    }
+
+	    else {
+
+		if (maybeResolveToDefine(sexp)) {
+		    var sym  = sexp.rest().first()
+		    var expr = sexp.rest().rest().first()
+		    var loc  = bindGlobal(env, sym)		
+		    sexp = List.create(Symbol.builtin('set'), loc, expr)
+		}	    
+		
+		var esexp   = expand(env, sexp)		
+		var nsexp   = normalize(esexp)
+		var jsast   = compile(nsexp, false)
+		var js      = emit(jsast)
+
+		publish('reno:emit-toplevel-expression', {
+		    sexp: sexp,
+		    js:   js
+		})
+
+		var warhead = Function('RT', js)	
+		warhead(RT)
+		continue expanding
+
+	    }	    
+
+	}
+
+    }
+
+}
+
 function p(x) {
     var inspect = require('util').inspect
     println(inspect(x, false, null))
 }
 
-function expandFile(file) {
-    
-    try {
-
-	var fs  = require('fs')
-	var src = fs.readFileSync(file, 'utf8')
-	var rdr = Reader.create({input: src, origin: file})
-
-	while (!rdr.isEmpty()) {	
-
-	    var pos = rdr.getPosition()
-
-	    function printHeader(txt) {
-		println('[' + txt + '] ' + pos)  
-	    }
-
-	    printHeader('READ')
-	    var sexp  = rdr.readSexp() 
-	    prn(sexp) 
-	    newline()
-
-	    printHeader('EXPAND')
-	    var esexp1 = expandSexp(reno, sexp) 
-	    prn(esexp1) 
-	    newline()
-
-	    /*
-	    printHeader('REEXPAND')
-	    var esexp2 = expandSexp(reno, esexp1)
-	    prn(esexp2)
-	    newline()
-	    */
-
-	    printHeader('NORMALIZE')
-	    var nsexp = normalize(esexp1)
-	    p(nsexp)
-	    newline()
-
-	    printHeader('COMPILE')
-	    var jsast = Context.compile(nsexp, true)
-	    p(jsast)
-	    newline()
-
-	    printHeader('EMIT')
-	    var js = Emitter.emitProgram(jsast)
-	    println(js)
-	    newline()
-	    
-	    printHeader('EVAL')
-	    var result = Function('RT', js)(RT)
-	    prn(result)
-	    newline()
-
-	}
-
-    }    
-
-    catch(e) {
-
-	printHeader('ERROR')
-	throw(e)
-
-    }
-
+function compileFile(filename, main) {
+    var src = require('fs').readFileSync(filename, 'utf8')
+    var rdr = Reader.create({input: src, origin: filename})
+    return compileReader(rdr, main)
 }
 
-// slightly tricky spot
-// for evaluation, 
+function compileReader(reader, main) {    
+    var ebuf = []
+    var mbuf = []
 
-function compileFile(file, main) {
-
-    var buf = []
-    
-    try {
-
-	var fs  = require('fs')
-	var src = fs.readFileSync(file, 'utf8')
-	var rdr = Reader.create({input: src, origin: file})
-
-	while (!rdr.isEmpty()) {	
-
-	    var pos = rdr.getPosition()
-
-	    function printHeader(txt) {
-		println('[' + txt + '] ' + pos)  
-	    }
-
-	    printHeader('READ')
-	    var sexp  = rdr.readSexp() 
-	    prn(sexp) 
-	    newline()
-
-	    printHeader('EXPAND')
-	    var esexp1 = expandSexp(reno, sexp) 
-	    prn(esexp1) 
-	    newline()
-
-	    /*
-	    printHeader('REEXPAND')
-	    var esexp2 = expandSexp(reno, esexp1)
-	    prn(esexp2)
-	    newline()
-	    */
-
-	    printHeader('NORMALIZE')
-	    var nsexp = normalize(esexp1)
-	    p(nsexp)
-	    newline()
-
-	    // emit for toplevel eval
-
-	    printHeader('COMPILE')
-	    var jsast = Context.compile(nsexp, true)
-	    p(jsast)
-	    newline()
-
-	    printHeader('EMIT')
-	    var js = Emitter.emitProgram(jsast)
-	    println(js)
-	    newline()
-	    
-	    printHeader('EVAL')
-	    var result = Function('RT', js)(RT)
-	    prn(result)
-	    newline()
-
-	    // printHeader('AOT_COMPILE')
-	    var jsast = Context.compile(nsexp, false)
-
-	    // printHeader('AOT_EMIT')
-	    var js = Emitter.emitProgram(jsast)
-	    
-	    buf.push(js)	    
-
-	}
-
-    }    
-
-    catch(e) {
-
-	printHeader('ERROR')
-	println('aborting compilation')
-	throw(e)
-
+    function handleExpression(data) {
+	ebuf.push(data.js)
+	println('[HANDLE_EXPRESSION]')
+	println(data.js)
+	newline()
     }
+
+    function handleMacro(data) {
+	mbuf.push(data)
+	println('[HANDLE_DEFMACRO]')
+	p(data)
+	newline()
+    }
+
+    function handleSexp(data) {
+	println('[MACROEXPAND]')
+	prn(data.sexp)
+	newline()
+    }
+
+    subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    subscribe('reno:emit-toplevel-expression', handleExpression)
+    subscribe('reno:emit-toplevel-macro', handleMacro)
+
+    // skip env creation for now
+
+    expandTopLevel({
+	reader : reader,
+	env    : reno	
+    }) 
+
+    unsubscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    unsubscribe('reno:emit-toplevel-expression', handleExpression)
+    unsubscribe('reno:emit-toplevel-macro', handleMacro)
 
     if (main) {
-	buf.push('RT[' + JSON.stringify(main) + ']()')
+	ebuf.push('RT[' + JSON.stringify(main) + ']()')
     }
 
-    return buf.join("\n")    
+    return ebuf.join("\n")
 
 }
 
-exports.expandFile = expandFile
 exports.compileFile = compileFile
 
 // END reno.main.js

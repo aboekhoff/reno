@@ -3,6 +3,12 @@
 // so that the compiler can focus on semantics
 // also does some final conversion of quoted symbols and keyword literals
 
+function normalize(sexp) {
+    var nsexp = normalizeSexp(sexp)
+    publish('reno:normalize', nsexp)
+    return nsexp
+}
+
 function maybeBuiltin(obj) {
     return obj instanceof Symbol.Qualified &&
 	   obj.namespace == 'reno'
@@ -39,13 +45,13 @@ function normalizeQuote(x) {
     }
 
     else {
-	return normalize(x)
+	return normalizeSexp(x)
     }
 
 }
 
 function normalizeBinding(pair) {
-    return [normalize(pair.first()), normalize(pair.rest().first())]
+    return [normalizeSexp(pair.first()), normalizeSexp(pair.rest().first())]
 }
 
 function normalizeBindings(bindings) {
@@ -61,7 +67,7 @@ function normalizeLabel(obj) {
 }
 
 function normalizeFn(args, body) {
-    body = normalize(body)
+    body = normalizeSexp(body)
 
     var pargs = []
     var rest  = null
@@ -72,12 +78,12 @@ function normalizeFn(args, body) {
 	var arg = args[i++]
 
 	if (arg instanceof Symbol) {
-	    pargs.push(normalize(arg))
+	    pargs.push(normalizeSexp(arg))
 	} 
 
 	if (arg instanceof Keyword) {
 	    var key = arg
-	    var arg = normalize(args[i++])
+	    var arg = normalizeSexp(args[i++])
 	    switch (key.name) {
 	    case 'rest':
 		rest = arg
@@ -105,7 +111,7 @@ function normalizeFn(args, body) {
 
 var NULL_LABEL = normalizeLabel(null)
 
-function normalize(sexp) {
+function normalizeSexp(sexp) {
     if (sexp instanceof Keyword) {
 	return ['CALL', 
 		['GLOBAL', 'reno', 'keyword'],
@@ -144,9 +150,9 @@ function normalize(sexp) {
 	    return normalizeQuote(sexp[1])
 
 	case '.':
-	    var node = normalize(sexp[1])
+	    var node = normalizeSexp(sexp[1])
 	    for (var i=2; i<sexp.length; i++) {
-		node = ['PROPERTY', node, normalize(sexp[i])]
+		node = ['PROPERTY', node, normalizeSexp(sexp[i])]
 	    }
 	    return node
 
@@ -159,51 +165,51 @@ function normalize(sexp) {
 
 	case 'if' : 
 	    return ['IF', 
-		    normalize(sexp[1]), 
-		    normalize(sexp[2]),
-		    normalize(sexp[3])]
+		    normalizeSexp(sexp[1]), 
+		    normalizeSexp(sexp[2]),
+		    normalizeSexp(sexp[3])]
 
 	case 'let*' :
 	    return ['LET',
 		    normalizeBindings(sexp[1]),
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'letrec*' :
 	    return ['LETREC',
 		    normalizeBindings(sexp[1]),
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'unwind-protect' :
 	    return normalizeUnwindProtect(sexp)
 	
 	case 'set' :
-	    return ['SET', normalize(sexp[1]), normalize(sexp[2])]
+	    return ['SET', normalizeSexp(sexp[1]), normalizeSexp(sexp[2])]
 
 	case 'loop' : 
-	    return ['LOOP', normalize(sexp[1])]
+	    return ['LOOP', normalizeSexp(sexp[1])]
 
 	case 'block' : 
 	    return ['BLOCK', 
 		    normalizeLabel(sexp[1]), 
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 	    
 	case 'return-from':
 	    return ['RETURN_FROM', 
 		    normalizeLabel(sexp[1]), 
-		    normalize(sexp[2])]
+		    normalizeSexp(sexp[2])]
 
 	case 'throw':
-	    return ['THROW', normalize(sexp[1])]
+	    return ['THROW', normalizeSexp(sexp[1])]
 
 	case 'js*':
 	    return ['RAW', sexp[1]]
 
 	case 'new':
-	    return ['NEW', normalize(sexp[1]), normalizeSeq(sexp.slice(2))]
+	    return ['NEW', normalizeSexp(sexp[1]), normalizeSeq(sexp.slice(2))]
 
 	}   
     }
 
-    return ['CALL', normalize(sexp[0]), normalizeSeq(sexp.slice(1))]
+    return ['CALL', normalizeSexp(sexp[0]), normalizeSeq(sexp.slice(1))]
 
 }

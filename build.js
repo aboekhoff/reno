@@ -15,6 +15,7 @@ COMPILER_TARGETS = [
     'reno.compiler.js',
     'reno.emitter.js',
     'reno.generic.js',
+    'reno.pubsub.js',
     'reno.runtime.js',
     'reno.main.js'
 ]

@@ -1,3 +1,9 @@
+function compile(normalizedSexp, wantReturn) {
+    var ast = Context.compile(normalizedSexp, wantReturn)
+    publish('reno:compile', ast)
+    return ast
+}
+
 function tracerFor(node) {    
     function tracer(val) {
 	tracer.traced = true

@@ -1,3 +1,9 @@
+function emit(program, options) {
+    var js = Emitter.emitProgram(program, options)
+    publish('reno.emit', js)
+    return js
+}
+
 function Emitter() {
     this.buffer    = []
     this.indention = 0

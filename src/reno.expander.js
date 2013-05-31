@@ -1,3 +1,9 @@
+function expand(e, x) {
+    var sexp = expandSexp(e, x)
+    publish('reno:expand', sexp)
+    return sexp
+}
+
 function macroexpand1(e, x) {
     var macro = maybeResolveToMacro(e, x)
     return macro ? macro(e, x) : x
@@ -58,6 +64,12 @@ function bindGlobal(e, s) {
     var qs = rs.qualify(e.name)
     Env.findOrDie(e.name).putSymbol(s, qs)
     return qs
+}
+
+function bindMacro(e, s, m) {
+    var rs = s.reify()
+    Env.findOrDie(e.name).putSymbol(s, m)
+    return rs
 }
 
 function expandSexp(e, x) {

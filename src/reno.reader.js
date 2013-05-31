@@ -174,8 +174,17 @@ Reader.prototype = {
 	}
     },
 
+    read: function() {
+	this.readWhitespace();
+	var pos  = this.getPosition()
+	var sexp = this.readSexp()
+	publish('reno:read', { sexp: sexp, position: pos})
+	return sexp
+    },
+
     readSexp: function() {
 	this.readWhitespace();
+
 	var nextChar = this.peek();
 
 	switch (nextChar) {
