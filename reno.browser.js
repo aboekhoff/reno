@@ -178,7 +178,39 @@ Symbol.Qualified.prototype.toString = function() {
     return this.namespace + "::" + this.name
 }
 
+// applyTag
 
+Symbol.Simple.prototype.applyTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.applyTag = function(tag) {
+    return (tag == this.tag) ?
+	this.symbol :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.applyTag = function(tag) {
+    return this
+}
+
+// ensureTag (for forcing symbol capture through sanitizer)
+
+Symbol.Simple.prototype.ensureTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.ensureTag = function(tag) {
+    return (tag == this.tag) ?
+	this :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.ensureTag = function(tag) {
+    return this
+}
 
 // END reno.symbol.js
 
@@ -340,7 +372,7 @@ Generic.addMethods(
     },
 
     Symbol.Qualified, function(x, p, e) {
-	p.write(x.namespace + "::" + x.name)
+	p.write("##" + x.namespace + "#" + x.name)
     },
 
     Symbol.Tagged, function(x, p, e) {
@@ -388,8 +420,13 @@ function println() {
 
 var RT = {
 
+    'reno::*env*'  : null,
     'reno::*out*'  : null /* defined at end of file */,
     'reno::window' : null /* defined at end of file */,	
+    
+    'reno::macroexpand-1' : null,
+    'reno::macroexpand' : null,
+    'reno::expand' : null,
 
     'reno::List' : List,
     'reno::Symbol' : Symbol,
@@ -564,6 +601,18 @@ var RT = {
 
     'reno::array?' : Array.isArray,
 
+    'reno::list?' : function(x) {
+	return x instanceof List
+    },
+
+    'reno::symbol?' : function(x) {
+	return x instanceof Symbol
+    },
+
+    'reno::keyword?' : function(x) {
+	return x instanceof Keyword
+    },
+
     'reno::boolean?' : function(x) {
 	return typeof x == 'boolean'
     },
@@ -617,7 +666,12 @@ var RT = {
 
 	more.forEach(function(x) { args.push(x) })
 	return f.apply(null, args)
-    }
+    },   
+
+    'reno::first'  : function(xs) { return xs.first() },
+    'reno::rest'   : function(xs) { return xs.rest() },
+    'reno::empty?' : function(xs) { return xs.isEmpty() },
+    'reno::cons'   : function(x, xs) { return xs.cons(x) }
 
 }
 

@@ -93,7 +93,46 @@ Env.prototype = {
 
     putLabel: function(label, value) {
 	this.putWithPrefix(Env.LABEL_PREFIX, label, value)
+    },
+
+    createSanitizers: function() {
+	var tag = new Symbol.Tag(this)    
+	
+	function applyTag(sexp) {
+	    if (sexp instanceof Symbol) {
+		return sexp.applyTag(tag)
+	    }
+
+	    if (sexp instanceof Array || sexp instanceof List) {
+		return sexp.map(applyTag)
+	    }
+
+	    else {
+		return sexp
+	    }
+
+	}
+
+	function ensureTag(sexp) {
+	    if (sexp instanceof Symbol) {
+		return sexp.ensureTag(tag)
+	    }
+
+	    if (sexp instanceof Array || sexp instanceof List) {
+		return sexp.map(ensureTag)
+	    }
+
+	    else {
+		return sexp
+	    }
+
+	}
+
+	return {
+	    tag       : tag,
+	    applyTag  : applyTag,
+	    ensureTag : ensureTag
+	}
     }
 
 }
-

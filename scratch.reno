@@ -1,20 +1,107 @@
-(define* app
-  (fn* ()
-       (prn "and we are live")
-       (define* document (. window "document"))
-       (define* body (. document "body"))
-       (define* canvas (.createElement document "canvas"))
-       (define* context (.getContext canvas "2d"))       
-       (define* WIDTH 640)
-       (define* HEIGHT 480)	      
+;; wrap fn* in order to support destructuring or other
+;; augmentations at a later date
 
-       (.appendChild body canvas)
-       (set (. canvas "width") WIDTH)
-       (set (. canvas "height") HEIGHT)
+(define-macro* fn 
+  (fn* (sexp _ _)
+       `(##reno#fn* ,@(rest sexp))))
 
-       (set (. context "fillStyle") "rgb(100, 20, 20)")
-       (.fillRect context 0 0 WIDTH HEIGHT)))
+(define-macro* let
+  (fn (sexp _ _)
+       `(##reno#let* ,@(rest sexp))))
 
-(define* -main
-  (fn* () (set (. window "onload") app)))
+(define-macro* letrec
+  (fn (sexp _ _)
+       `(##reno#letrec* ,@(rest sexp))))
+
+(define-macro* cond
+  (fn (xs _ _)
+    (let* ((clauses (rest xs)))
+      (if (empty? clauses)
+	  #nil
+	  (let ((test (first (first clauses)))
+		 (then `(##reno#do ,@(rest (first clauses))))
+		 (more (rest clauses)))
+	    `(##reno#if ,test ,then (##reno#cond ,@more)))))))
+
+(define-macro* or
+  (fn (sexp _ _)
+    (let ((args (rest sexp)))
+      (cond 
+       ((empty? args) 
+	#f)
+
+       ((empty? (rest args)) 
+	(first args))
+
+       (#t
+	`(##reno#let ((tmp ,(first args)))
+	   (##reno#if tmp tmp (##reno#or ,@(rest args)))))))))
+
+(define-macro* and
+  (fn (sexp _ _)
+    (let ((args (rest sexp)))
+      (cond 
+       ((empty? args) 
+	#t)
+
+       ((empty? (rest args)) 
+	(first args))
+
+       (#t  
+	`(##reno#let ((tmp ,(first args)))
+           (##reno#if tmp (##reno#and ,@(rest args)) #f)))))))
+
+(define-macro* if-not
+  (fn (sexp _ _)
+       `(##reno#if ,(first (rest sexp))
+	    ,(first (rest (rest (rest sexp))))
+	    ,(first (rest (rest sexp))))))
+
+(define-macro* when
+  (fn (sexp _ _)
+       `(##reno#if ,(first (rest sexp))
+	    (##reno#do ,@(rest (rest sexp)))
+	    #nil)))
+
+(define-macro* when-not
+  (fn (sexp _ _)
+       `(##reno#if ,(first (rest sexp))
+	    #nil
+	    (##reno#do ,@(rest (rest sexp))))))
+
+(define-macro* define
+  (fn* (sexp _ _)
+    (let ((head (first (rest sexp)))
+	  (tail (rest (rest sexp))))
+      (if (list? head)
+	  (let ((name (first head))
+		(args (rest head)))
+	    `(##reno#define* ,name (##reno#fn ,args (##reno#block ,name ,@tail))))
+	  `(##reno#define* ,name ,(first tail))))))
+
+(define (app)
+  (prn "woot!"))
+
+(define (-main)
+  (set (. window :onload) app))
+
+;; (define* app
+;;   (fn* ()
+;;        (prn "and we are live")
+;;        (define* document (. window "document"))
+;;        (define* body (. document "body"))
+;;        (define* canvas (.createElement document "canvas"))
+;;        (define* context (.getContext canvas "2d"))       
+;;        (define* WIDTH 640)
+;;        (define* HEIGHT 480)	      
+
+;;        (.appendChild body canvas)
+;;        (set (. canvas "width") WIDTH)
+;;        (set (. canvas "height") HEIGHT)
+
+;;        (set (. context "fillStyle") "rgb(100, 20, 20)")
+;;        (.fillRect context 0 0 WIDTH HEIGHT)))
+
+;; (define* -main
+;;  (fn* () (set (. window "onload") app)))
 

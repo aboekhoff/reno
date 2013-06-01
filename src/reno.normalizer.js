@@ -85,7 +85,7 @@ function normalizeFn(args, body) {
 	    var key = arg
 	    var arg = normalizeSexp(args[i++])
 	    switch (key.name) {
-	    case 'rest':
+	    case '&':
 		rest = arg
 		break
 	    case 'this':

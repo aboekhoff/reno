@@ -2,8 +2,13 @@
 
 var RT = {
 
+    'reno::*env*'  : null,
     'reno::*out*'  : null /* defined at end of file */,
     'reno::window' : null /* defined at end of file */,	
+    
+    'reno::macroexpand-1' : null,
+    'reno::macroexpand' : null,
+    'reno::expand' : null,
 
     'reno::List' : List,
     'reno::Symbol' : Symbol,
@@ -178,6 +183,18 @@ var RT = {
 
     'reno::array?' : Array.isArray,
 
+    'reno::list?' : function(x) {
+	return x instanceof List
+    },
+
+    'reno::symbol?' : function(x) {
+	return x instanceof Symbol
+    },
+
+    'reno::keyword?' : function(x) {
+	return x instanceof Keyword
+    },
+
     'reno::boolean?' : function(x) {
 	return typeof x == 'boolean'
     },
@@ -231,7 +248,12 @@ var RT = {
 
 	more.forEach(function(x) { args.push(x) })
 	return f.apply(null, args)
-    }
+    },   
+
+    'reno::first'  : function(xs) { return xs.first() },
+    'reno::rest'   : function(xs) { return xs.rest() },
+    'reno::empty?' : function(xs) { return xs.isEmpty() },
+    'reno::cons'   : function(x, xs) { return xs.cons(x) }
 
 }
 

@@ -176,7 +176,39 @@ Symbol.Qualified.prototype.toString = function() {
     return this.namespace + "::" + this.name
 }
 
+// applyTag
 
+Symbol.Simple.prototype.applyTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.applyTag = function(tag) {
+    return (tag == this.tag) ?
+	this.symbol :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.applyTag = function(tag) {
+    return this
+}
+
+// ensureTag (for forcing symbol capture through sanitizer)
+
+Symbol.Simple.prototype.ensureTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.ensureTag = function(tag) {
+    return (tag == this.tag) ?
+	this :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.ensureTag = function(tag) {
+    return this
+}
 
 // END reno.symbol.js
 
@@ -352,10 +384,49 @@ Env.prototype = {
 
     putLabel: function(label, value) {
 	this.putWithPrefix(Env.LABEL_PREFIX, label, value)
+    },
+
+    createSanitizers: function() {
+	var tag = new Symbol.Tag(this)    
+	
+	function applyTag(sexp) {
+	    if (sexp instanceof Symbol) {
+		return sexp.applyTag(tag)
+	    }
+
+	    if (sexp instanceof Array || sexp instanceof List) {
+		return sexp.map(applyTag)
+	    }
+
+	    else {
+		return sexp
+	    }
+
+	}
+
+	function ensureTag(sexp) {
+	    if (sexp instanceof Symbol) {
+		return sexp.ensureTag(tag)
+	    }
+
+	    if (sexp instanceof Array || sexp instanceof List) {
+		return sexp.map(ensureTag)
+	    }
+
+	    else {
+		return sexp
+	    }
+
+	}
+
+	return {
+	    tag       : tag,
+	    applyTag  : applyTag,
+	    ensureTag : ensureTag
+	}
     }
 
 }
-
 
 // END reno.env.js
 
@@ -731,7 +802,7 @@ function expand(e, x) {
 
 function macroexpand1(e, x) {
     var macro = maybeResolveToMacro(e, x)
-    return macro ? macro(e, x) : x
+    return macro ? macro(x, e) : x
 }
 
 function macroexpand(e, x1) {
@@ -742,7 +813,7 @@ function macroexpand(e, x1) {
 function maybeResolveToMacro(e, x) {
     if (x instanceof List.Cons &&	
 	x.first() instanceof Symbol) {
-	var denotation = e.getSymbol(x)
+	var denotation = e.getSymbol(x.first())
 	if (typeof denotation == 'function') {
 	    return denotation
 	}
@@ -1288,7 +1359,7 @@ function normalizeFn(args, body) {
 	    var key = arg
 	    var arg = normalizeSexp(args[i++])
 	    switch (key.name) {
-	    case 'rest':
+	    case '&':
 		rest = arg
 		break
 	    case 'this':
@@ -1592,16 +1663,12 @@ Context.prototype = {
 	case 'RESTARGS':
 	case 'RAW':
 	case 'CONST':
+	case 'KEYWORD':
 	case 'GLOBAL':	    
 	    return node
 
 	case 'ARRAY':
 	    return ['ARRAY', this.toExprs(node[1])]
-
-	case 'KEYWORD':
-	    return ['CALL', 
-		    ['GLOBAL', 'vegas', 'Keyword'], 
-		    [['CONST', node[1]]]]
 
 	case 'PROPERTY':
 	    return ['PROPERTY', this.toExpr(node[1]), this.toExpr(node[2])]
@@ -2294,7 +2361,7 @@ Generic.addMethods(
     },
 
     Symbol.Qualified, function(x, p, e) {
-	p.write(x.namespace + "::" + x.name)
+	p.write("##" + x.namespace + "#" + x.name)
     },
 
     Symbol.Tagged, function(x, p, e) {
@@ -2377,8 +2444,13 @@ function publish(key, data) {
 
 var RT = {
 
+    'reno::*env*'  : null,
     'reno::*out*'  : null /* defined at end of file */,
     'reno::window' : null /* defined at end of file */,	
+    
+    'reno::macroexpand-1' : null,
+    'reno::macroexpand' : null,
+    'reno::expand' : null,
 
     'reno::List' : List,
     'reno::Symbol' : Symbol,
@@ -2553,6 +2625,18 @@ var RT = {
 
     'reno::array?' : Array.isArray,
 
+    'reno::list?' : function(x) {
+	return x instanceof List
+    },
+
+    'reno::symbol?' : function(x) {
+	return x instanceof Symbol
+    },
+
+    'reno::keyword?' : function(x) {
+	return x instanceof Keyword
+    },
+
     'reno::boolean?' : function(x) {
 	return typeof x == 'boolean'
     },
@@ -2606,7 +2690,12 @@ var RT = {
 
 	more.forEach(function(x) { args.push(x) })
 	return f.apply(null, args)
-    }
+    },   
+
+    'reno::first'  : function(xs) { return xs.first() },
+    'reno::rest'   : function(xs) { return xs.rest() },
+    'reno::empty?' : function(xs) { return xs.isEmpty() },
+    'reno::cons'   : function(x, xs) { return xs.cons(x) }
 
 }
 
@@ -2662,6 +2751,16 @@ RT['reno::window'] = typeof window == 'undefined' ? null : window
 
 var reno = Env.create('reno')
 
+RT['reno::*env*'] = reno
+
+RT['reno::macroexpand-1'] = function(sexp) {
+    return macroexpand1(RT['reno::*env*'], sexp)
+}
+
+RT['reno::macroexpand'] = function(sexp) {
+    return macroexpand(RT['reno::*env*'], sexp)
+}
+
 var specialForms = [
     'define*', 'define-macro*',
     'quote', 'quasiquote', 'unquote', 'unquote-splicing',
@@ -2695,19 +2794,30 @@ function expandTopLevel(config) {
 
 	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
-		var sym      = sexp.rest().first()
-		var sexp     = sexp.rest().rest().first()
-		var esexp    = expand(env, sexp)
-		var nsexp    = normalize(sexp)
+		println('[WTF SEXP1]')
+		prn(sexp)
+		newline()
+
+		var sym = sexp.rest().first()
+		var def = sexp.rest().rest().first()			
+		println('[WTF SEXP2]')
+		prn(def)
+		newline()
+
+		var esexp    = expand(env, def)
+
+		var nsexp    = normalize(esexp)
 		var jsast    = compile(nsexp, true)		
 		var js       = emit(jsast)
 
-
 		var warhead  = Function('RT', js)		
 		var submacro = warhead(RT)
-		var macro    = function(sexp, callingEnv) {
-		    return submacro(sexp, callingEnv, env)
-		}
+
+		var macro = (function(submacro) {		   
+		    return function(sexp, callingEnv) {
+			return submacro(sexp, callingEnv, env)
+		    }		    
+		})(submacro)
 
 		var qsym = bindMacro(env, sym, macro)
 

@@ -2,6 +2,16 @@
 
 var reno = Env.create('reno')
 
+RT['reno::*env*'] = reno
+
+RT['reno::macroexpand-1'] = function(sexp) {
+    return macroexpand1(RT['reno::*env*'], sexp)
+}
+
+RT['reno::macroexpand'] = function(sexp) {
+    return macroexpand(RT['reno::*env*'], sexp)
+}
+
 var specialForms = [
     'define*', 'define-macro*',
     'quote', 'quasiquote', 'unquote', 'unquote-splicing',
@@ -35,19 +45,30 @@ function expandTopLevel(config) {
 
 	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
-		var sym      = sexp.rest().first()
-		var sexp     = sexp.rest().rest().first()
-		var esexp    = expand(env, sexp)
-		var nsexp    = normalize(sexp)
+		println('[WTF SEXP1]')
+		prn(sexp)
+		newline()
+
+		var sym = sexp.rest().first()
+		var def = sexp.rest().rest().first()			
+		println('[WTF SEXP2]')
+		prn(def)
+		newline()
+
+		var esexp    = expand(env, def)
+
+		var nsexp    = normalize(esexp)
 		var jsast    = compile(nsexp, true)		
 		var js       = emit(jsast)
 
-
 		var warhead  = Function('RT', js)		
 		var submacro = warhead(RT)
-		var macro    = function(sexp, callingEnv) {
-		    return submacro(sexp, callingEnv, env)
-		}
+
+		var macro = (function(submacro) {		   
+		    return function(sexp, callingEnv) {
+			return submacro(sexp, callingEnv, env)
+		    }		    
+		})(submacro)
 
 		var qsym = bindMacro(env, sym, macro)
 

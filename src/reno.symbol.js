@@ -93,4 +93,36 @@ Symbol.Qualified.prototype.toString = function() {
     return this.namespace + "::" + this.name
 }
 
+// applyTag
 
+Symbol.Simple.prototype.applyTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.applyTag = function(tag) {
+    return (tag == this.tag) ?
+	this.symbol :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.applyTag = function(tag) {
+    return this
+}
+
+// ensureTag (for forcing symbol capture through sanitizer)
+
+Symbol.Simple.prototype.ensureTag = function(tag) {
+    return new Symbol.Tagged(tag, this)
+}
+
+Symbol.Tagged.prototype.ensureTag = function(tag) {
+    return (tag == this.tag) ?
+	this :
+	new Symbol.Tagged(tag, this)
+}
+
+
+Symbol.Qualified.prototype.ensureTag = function(tag) {
+    return this
+}

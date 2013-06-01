@@ -131,7 +131,7 @@ Generic.addMethods(
     },
 
     Symbol.Qualified, function(x, p, e) {
-	p.write(x.namespace + "::" + x.name)
+	p.write("##" + x.namespace + "#" + x.name)
     },
 
     Symbol.Tagged, function(x, p, e) {

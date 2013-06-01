@@ -169,16 +169,12 @@ Context.prototype = {
 	case 'RESTARGS':
 	case 'RAW':
 	case 'CONST':
+	case 'KEYWORD':
 	case 'GLOBAL':	    
 	    return node
 
 	case 'ARRAY':
 	    return ['ARRAY', this.toExprs(node[1])]
-
-	case 'KEYWORD':
-	    return ['CALL', 
-		    ['GLOBAL', 'vegas', 'Keyword'], 
-		    [['CONST', node[1]]]]
 
 	case 'PROPERTY':
 	    return ['PROPERTY', this.toExpr(node[1]), this.toExpr(node[2])]

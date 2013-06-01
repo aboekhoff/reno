@@ -6,7 +6,7 @@ function expand(e, x) {
 
 function macroexpand1(e, x) {
     var macro = maybeResolveToMacro(e, x)
-    return macro ? macro(e, x) : x
+    return macro ? macro(x, e) : x
 }
 
 function macroexpand(e, x1) {
@@ -17,7 +17,7 @@ function macroexpand(e, x1) {
 function maybeResolveToMacro(e, x) {
     if (x instanceof List.Cons &&	
 	x.first() instanceof Symbol) {
-	var denotation = e.getSymbol(x)
+	var denotation = e.getSymbol(x.first())
 	if (typeof denotation == 'function') {
 	    return denotation
 	}
