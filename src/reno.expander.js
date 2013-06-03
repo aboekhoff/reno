@@ -60,9 +60,11 @@ function bindLocal(e, s) {
 }
 
 function bindGlobal(e, s) {
-    var rs = s.reify()
-    var qs = rs.qualify(e.name)
-    Env.findOrDie(e.name).putSymbol(s, qs)
+    var rs      = s.reify()
+    var qs      = rs.qualify(e.name)
+    var rootEnv = Env.findOrDie(e.name)
+    rootEnv.putSymbol(s, qs)
+    rootEnv.addExport(rs)    
     return qs
 }
 
@@ -458,14 +460,55 @@ function expandSpecialForm(e, x, n) {
     case 'unwind-protect':
 	throw Error('not implemented')
 
-    case 'import':
-	throw Error('not implemented')
-
     case 'js*':
 	return List.create(
 	    Symbol.builtin('js*'),
 	    expandSexp(e, x.rest().first())
 	)
+
+    case 'require':
+	var options = {}
+	var name    = x.rest().first().toString()
+	var args    = x.rest().rest().toArray()
+	var env     = Env.findOrDie(name)
+	var exports = env.exports
+
+	for (var i=0; i<args.length; i+=2) {
+	    options[args[i]] = args[i+1]
+	}
+
+	options.prefix = options.prefix || ""
+
+	if (options.only) {
+	    var names = {}
+	    options.only.forEach(function(x) {names[x] = true })
+	    var accept = function(sym) {
+		return !!names[sym]
+	    }
+	}
+
+	else if (options.exclude) {	    
+	    var names = {}
+	    options.except.forEach(function(x) {name[x] = true})
+	    var accept = function(sym) {
+		return !names[sym]
+	    }
+	}
+
+	else {
+	    var accept = function(x) { return true }
+	}
+
+	for (var i=0; i<exports.length; i++) {	    
+	    var symbol = exports[i]
+	    if (accept(symbol)) {
+		var denotation = env.getSymbol(symbol)
+		var alias      = new Symbol.Simple(options.prefix + symbol)
+		e.putSymbol(alias, denotation)
+	    }	    
+	}
+
+	return namespace + " required"
 
     }
 

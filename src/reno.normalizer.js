@@ -113,9 +113,7 @@ var NULL_LABEL = normalizeLabel(null)
 
 function normalizeSexp(sexp) {
     if (sexp instanceof Keyword) {
-	return ['CALL', 
-		['GLOBAL', 'reno', 'keyword'],
-		[['CONST', sexp.name]]]
+	return ['KEYWORD', sexp.name]
     }
 
     if (sexp instanceof Symbol.Simple) {

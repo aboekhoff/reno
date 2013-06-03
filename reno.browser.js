@@ -376,7 +376,7 @@ Generic.addMethods(
     },
 
     Symbol.Tagged, function(x, p, e) {
-	p.write(x.symbol)
+	_print(x.symbol, p, e)
     },
 
     Symbol.Simple, function(x, p, e) {
@@ -411,6 +411,46 @@ function println() {
     newline()
 }
 
+// list functions
+
+var cons    = Generic({name: "cons", index: 1})
+var first   = Generic({name: "first"})
+var rest    = Generic({name: "rest"})
+var isEmpty = Generic({name: "empty?"})
+
+Generic.addMethods(
+    cons,
+    null, function(x, xs) { return List.create(x) },
+    List, function(x, xs) { return new List.Cons(x, xs) },
+    Array, function(x, xs) { return new List.Cons(x, List.fromArray(xs)) }
+)
+
+Generic.addMethods(
+    first,
+    List.Cons, function(x) { return x.head },
+    Array,     function(x) { return x[0] }
+)
+
+Generic.addMethods(
+    rest,
+    List.Cons, function(x) { return x.tail },
+    Array, function(x) { 
+	var ls = new List.Nil
+	var i = x.length
+	while (i>1) { i--; ls = new List.Cons(x[i], ls) }
+	return ls
+    }
+)
+
+Generic.addMethods(
+    isEmpty,
+    null, function(_) { return true },
+    List.Nil, function(_) { return true },
+    List.Cons, function(x) { return false },    
+    Array, function(x) { return x.length == 0 }
+)
+
+
 
 // END reno.generic.js
 
@@ -420,20 +460,21 @@ function println() {
 
 var RT = {
 
-    'reno::*env*'  : null,
-    'reno::*out*'  : null /* defined at end of file */,
-    'reno::window' : null /* defined at end of file */,	
+    'reno::*load-path*' : [""],
+    'reno::*env*'       : null,
+    'reno::*out*'       : null /* defined at end of file */,
+    'reno::window'      : null /* defined at end of file */,	
     
     'reno::macroexpand-1' : null,
     'reno::macroexpand' : null,
     'reno::expand' : null,
 
-    'reno::List' : List,
-    'reno::Symbol' : Symbol,
+    'reno::List'    : List,
+    'reno::Symbol'  : Symbol,
     'reno::Keyword' : Keyword,
-    'reno::pr' : pr,
-    'reno::prn' : prn,
-    'reno::print' : print,
+    'reno::pr'      : pr,
+    'reno::prn'     : prn,
+    'reno::print'   : print,
     'reno::println' : println,
     'reno::newline' : newline,    
 
@@ -668,10 +709,10 @@ var RT = {
 	return f.apply(null, args)
     },   
 
-    'reno::first'  : function(xs) { return xs.first() },
-    'reno::rest'   : function(xs) { return xs.rest() },
-    'reno::empty?' : function(xs) { return xs.isEmpty() },
-    'reno::cons'   : function(x, xs) { return xs.cons(x) }
+    'reno::first'  : first,
+    'reno::rest'   : rest,
+    'reno::empty?' : isEmpty,
+    'reno::cons'   : cons
 
 }
 
@@ -715,9 +756,26 @@ if (typeof process == 'undefined') {
 
 }
 
-RT['reno::window'] = typeof window == 'undefined' ? null : window
-    
+if (typeof window != 'undefined') {
+    RT['reno::window'] = window
+} 
 
+if (typeof __dirname != 'undefined') {
+    var path = require('path')
+    RT['reno::*load-path*'].push(path.dirname(process.argv[1]))
+    RT['reno::*load-path*'].push(__dirname)
+    RT['reno::slurp'] = function(filename) {
+	var fs    = require('fs')
+	var path  = require('path')
+	var paths = RT['reno::*load-path*']
+	for (var i=0; i<paths.length; i++) {
+	    var abspath = path.join(paths[i], filename)
+	    var stats   = fs.lstatSync(abspath)
+	    if (stats.isFile()) { return fs.readFileSync(abspath, 'utf8') }
+	}
+	throw Error('file not found: ' + filename) 
+    }
+}
 
 // END reno.runtime.js
 

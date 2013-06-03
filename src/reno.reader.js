@@ -318,9 +318,25 @@ Reader.prototype = {
 	}
     },
 
+    // add in foo.bar.baz reader macro   
+
     parseSymbol: function(string, position) {
 	if (string[0] == ":") {
 	    return Keyword.create(string.substring(1))
+	}
+
+	if (/[^\.]+(\.[^\.]+)+/.test(string)) {
+	    var segs = string.split('.')
+	    var root = parseSymbol(segs[0], position)
+	    for (var i=1; i<segs.length; i++) {
+		root = List.create(
+		    Symbol.builtin('.'),
+		    root,
+		    segs[i]
+		)
+	    }
+	    root['source-position'] = position
+	    return root
 	}
 
 	else if (/##[^#]+#[^#]+/.test(string)) {

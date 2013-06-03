@@ -13,21 +13,40 @@ Env.load = function(name) {
 }
 
 Env.create = function(name) {
-    return Env.registry[name] = new Env(new Dict(), name)
+    var env = Env.registry[name] = new Env(new Dict(), name)
+    env.putSymbol(new Symbol.Simple('require'), 'require')
+    return env
 }
 
 Env.findOrCreate = function(name) {
-    if (!Env.registry[name]) {
-	Env.registry[name] = new Env(new Dict(), name)
-    }
+    if (!Env.registry[name]) { Env.create(name) }        
     return Env.registry[name]
 }
 
 Env.findOrDie = function(name) {
     if (!Env.registry[name]) {
-	throw Error('no environment registered under name: ' + name)
+	Env.load(name)
     }
     return Env.registry[name]
+}
+
+Env.load = function(name) {
+    if (!Env.registry[name]) {
+	var fs   = require('fs')
+	var file = Env.nameToFile(name)
+	var src  = RT['reno::slurp'](file)
+	var env  = Env.create(name)
+	loadTopLevel({
+	    src    : src,
+	    origin : file,
+	    env    : env
+	})
+    }
+    return Env.registry[name]
+}
+
+Env.nameToFile = function(name) {
+    return name.toString() + ".reno"
 }
 
 Env.toKey = function(obj) {
@@ -37,6 +56,11 @@ Env.toKey = function(obj) {
 }
 
 Env.prototype = {
+    addExport: function(symbol) {	
+	this.exports = this.exports || []
+	this.exports.push(symbol)
+    },
+
     extend: function() {
 	return new Env(this.dict.extend(), this.name)
     },
@@ -64,7 +88,7 @@ Env.prototype = {
 	// from the tagged symbol and recurse
 
 	if (object instanceof Symbol.Tagged) {
-	    return object.tag.env.get(object.symbol, notFound)
+	    return object.tag.env.getWithPrefix(prefix, object.symbol, notFound)
 	}
 
 	// otherwise we give up
@@ -104,7 +128,11 @@ Env.prototype = {
 	    }
 
 	    if (sexp instanceof Array || sexp instanceof List) {
-		return sexp.map(applyTag)
+		var _sexp = sexp.map(applyTag)
+		if (sexp['source-position']) {
+		    _sexp['source-position'] = sexp['source-position']
+		}	
+		return _sexp
 	    }
 
 	    else {
@@ -119,7 +147,11 @@ Env.prototype = {
 	    }
 
 	    if (sexp instanceof Array || sexp instanceof List) {
-		return sexp.map(ensureTag)
+		var _sexp = sexp.map(ensureTag)
+		if (sexp['source-position']) {
+		    _sexp['source-position'] = sexp['source-position']
+		}
+		return _sexp
 	    }
 
 	    else {
@@ -129,9 +161,9 @@ Env.prototype = {
 	}
 
 	return {
-	    tag       : tag,
-	    applyTag  : applyTag,
-	    ensureTag : ensureTag
+	    tag      : tag,
+	    sanitize : applyTag,
+	    capture  : ensureTag
 	}
     }
 

@@ -13,15 +13,45 @@ RT['reno::macroexpand'] = function(sexp) {
 }
 
 var specialForms = [
-    'define*', 'define-macro*',
+    'define*', 'define-macro*', 
     'quote', 'quasiquote', 'unquote', 'unquote-splicing',
     'fn*', 'let*', 'letrec*', 'do', 'if', 'set',
-    'block', 'loop', 'return-from', 'unwind-protect', 'throw', 'js*'
+    'block', 'loop', 'return-from', 'unwind-protect', 'throw', 'js*',
+    'require'
 ]
 
 specialForms.forEach(function(name) {
     reno.putSymbol(new Symbol.Simple(name), name)
 })
+
+for (var v in RT) {
+    var segs      = v.split("::")
+    var namespace = segs[0]
+    var name      = segs[1]
+    var sym       = new Symbol.Simple(name)
+    var qsym      = new Symbol.Qualified(namespace, name)
+    Env.findOrCreate(namespace).putSymbol(sym, qsym)
+}
+
+function loadTopLevel(config) {
+    var src    = config.src
+    var env    = config.env
+    var origin = config.origin
+
+    var previousEnv = RT['reno::*env*']
+
+    try {
+	RT['reno::*env*'] = env
+	expandTopLevel({
+	    reader : Reader.create({input: src, origin: origin})
+	})	
+    }
+
+    finally {
+	RT['reno::*env*'] = previousEnv
+    }
+
+}
 
 function expandTopLevel(config) {
     var rdr       = config.reader 
@@ -45,15 +75,8 @@ function expandTopLevel(config) {
 
 	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
-		println('[WTF SEXP1]')
-		prn(sexp)
-		newline()
-
 		var sym = sexp.rest().first()
 		var def = sexp.rest().rest().first()			
-		println('[WTF SEXP2]')
-		prn(def)
-		newline()
 
 		var esexp    = expand(env, def)
 
@@ -124,14 +147,11 @@ function compileFile(filename, main) {
 }
 
 function compileReader(reader, main) {    
-    var ebuf = []
+    var ebuf = [reno_preamble]
     var mbuf = []
 
     function handleExpression(data) {
 	ebuf.push(data.js)
-	println('[HANDLE_EXPRESSION]')
-	println(data.js)
-	newline()
     }
 
     function handleMacro(data) {
@@ -165,23 +185,22 @@ function compileReader(reader, main) {
 	newline()
     }
 
-    subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    // subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     subscribe('reno:emit-toplevel-expression', handleExpression)
-    subscribe('reno:emit-toplevel-macro', handleMacro)
-    subscribe('reno:compile', handleCompile)
-    subscribe('reno:normalize', handleNormalize)
-    subscribe('reno:expand', handleExpansion)
-
+    // subscribe('reno:emit-toplevel-macro', handleMacro)
+    // subscribe('reno:compile', handleCompile)
+    // subscribe('reno:normalize', handleNormalize)
+    // subscribe('reno:expand', handleExpansion)
     // skip env creation for now
 
     expandTopLevel({
 	reader : reader,
-	env    : reno	
+	env    : RT['reno::*env*']
     }) 
 
-    unsubscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    // unsubscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     unsubscribe('reno:emit-toplevel-expression', handleExpression)
-    unsubscribe('reno:emit-toplevel-macro', handleMacro)
+    // unsubscribe('reno:emit-toplevel-macro', handleMacro)
 
     if (main) {
 	ebuf.push('RT[' + JSON.stringify(main) + ']()')
@@ -191,4 +210,14 @@ function compileReader(reader, main) {
 
 }
 
+// first things first
+// we load reno
+
+var reno_src = RT['reno::slurp']('reno.reno')
+var reno_preamble = compileReader(
+    Reader.create({input: reno_src, origin: 'reno.reno'})   
+)
+
 exports.compileFile = compileFile
+
+console.log(process.argv)

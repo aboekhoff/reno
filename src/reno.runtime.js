@@ -2,20 +2,21 @@
 
 var RT = {
 
-    'reno::*env*'  : null,
-    'reno::*out*'  : null /* defined at end of file */,
-    'reno::window' : null /* defined at end of file */,	
+    'reno::*load-path*' : [""],
+    'reno::*env*'       : null,
+    'reno::*out*'       : null /* defined at end of file */,
+    'reno::window'      : null /* defined at end of file */,	
     
     'reno::macroexpand-1' : null,
     'reno::macroexpand' : null,
     'reno::expand' : null,
 
-    'reno::List' : List,
-    'reno::Symbol' : Symbol,
+    'reno::List'    : List,
+    'reno::Symbol'  : Symbol,
     'reno::Keyword' : Keyword,
-    'reno::pr' : pr,
-    'reno::prn' : prn,
-    'reno::print' : print,
+    'reno::pr'      : pr,
+    'reno::prn'     : prn,
+    'reno::print'   : print,
     'reno::println' : println,
     'reno::newline' : newline,    
 
@@ -250,10 +251,10 @@ var RT = {
 	return f.apply(null, args)
     },   
 
-    'reno::first'  : function(xs) { return xs.first() },
-    'reno::rest'   : function(xs) { return xs.rest() },
-    'reno::empty?' : function(xs) { return xs.isEmpty() },
-    'reno::cons'   : function(x, xs) { return xs.cons(x) }
+    'reno::first'  : first,
+    'reno::rest'   : rest,
+    'reno::empty?' : isEmpty,
+    'reno::cons'   : cons
 
 }
 
@@ -297,6 +298,23 @@ if (typeof process == 'undefined') {
 
 }
 
-RT['reno::window'] = typeof window == 'undefined' ? null : window
-    
+if (typeof window != 'undefined') {
+    RT['reno::window'] = window
+} 
 
+if (typeof __dirname != 'undefined') {
+    var path = require('path')
+    RT['reno::*load-path*'].push(path.dirname(process.argv[1]))
+    RT['reno::*load-path*'].push(__dirname)
+    RT['reno::slurp'] = function(filename) {
+	var fs    = require('fs')
+	var path  = require('path')
+	var paths = RT['reno::*load-path*']
+	for (var i=0; i<paths.length; i++) {
+	    var abspath = path.join(paths[i], filename)
+	    var stats   = fs.lstatSync(abspath)
+	    if (stats.isFile()) { return fs.readFileSync(abspath, 'utf8') }
+	}
+	throw Error('file not found: ' + filename) 
+    }
+}

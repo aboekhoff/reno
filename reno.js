@@ -304,21 +304,40 @@ Env.load = function(name) {
 }
 
 Env.create = function(name) {
-    return Env.registry[name] = new Env(new Dict(), name)
+    var env = Env.registry[name] = new Env(new Dict(), name)
+    env.putSymbol(new Symbol.Simple('require'), 'require')
+    return env
 }
 
 Env.findOrCreate = function(name) {
-    if (!Env.registry[name]) {
-	Env.registry[name] = new Env(new Dict(), name)
-    }
+    if (!Env.registry[name]) { Env.create(name) }        
     return Env.registry[name]
 }
 
 Env.findOrDie = function(name) {
     if (!Env.registry[name]) {
-	throw Error('no environment registered under name: ' + name)
+	Env.load(name)
     }
     return Env.registry[name]
+}
+
+Env.load = function(name) {
+    if (!Env.registry[name]) {
+	var fs   = require('fs')
+	var file = Env.nameToFile(name)
+	var src  = RT['reno::slurp'](file)
+	var env  = Env.create(name)
+	loadTopLevel({
+	    src    : src,
+	    origin : file,
+	    env    : env
+	})
+    }
+    return Env.registry[name]
+}
+
+Env.nameToFile = function(name) {
+    return name.toString() + ".reno"
 }
 
 Env.toKey = function(obj) {
@@ -328,6 +347,11 @@ Env.toKey = function(obj) {
 }
 
 Env.prototype = {
+    addExport: function(symbol) {	
+	this.exports = this.exports || []
+	this.exports.push(symbol)
+    },
+
     extend: function() {
 	return new Env(this.dict.extend(), this.name)
     },
@@ -355,7 +379,7 @@ Env.prototype = {
 	// from the tagged symbol and recurse
 
 	if (object instanceof Symbol.Tagged) {
-	    return object.tag.env.get(object.symbol, notFound)
+	    return object.tag.env.getWithPrefix(prefix, object.symbol, notFound)
 	}
 
 	// otherwise we give up
@@ -395,7 +419,11 @@ Env.prototype = {
 	    }
 
 	    if (sexp instanceof Array || sexp instanceof List) {
-		return sexp.map(applyTag)
+		var _sexp = sexp.map(applyTag)
+		if (sexp['source-position']) {
+		    _sexp['source-position'] = sexp['source-position']
+		}	
+		return _sexp
 	    }
 
 	    else {
@@ -410,7 +438,11 @@ Env.prototype = {
 	    }
 
 	    if (sexp instanceof Array || sexp instanceof List) {
-		return sexp.map(ensureTag)
+		var _sexp = sexp.map(ensureTag)
+		if (sexp['source-position']) {
+		    _sexp['source-position'] = sexp['source-position']
+		}
+		return _sexp
 	    }
 
 	    else {
@@ -420,9 +452,9 @@ Env.prototype = {
 	}
 
 	return {
-	    tag       : tag,
-	    applyTag  : applyTag,
-	    ensureTag : ensureTag
+	    tag      : tag,
+	    sanitize : applyTag,
+	    capture  : ensureTag
 	}
     }
 
@@ -752,9 +784,25 @@ Reader.prototype = {
 	}
     },
 
+    // add in foo.bar.baz reader macro   
+
     parseSymbol: function(string, position) {
 	if (string[0] == ":") {
 	    return Keyword.create(string.substring(1))
+	}
+
+	if (/[^\.]+(\.[^\.]+)+/.test(string)) {
+	    var segs = string.split('.')
+	    var root = parseSymbol(segs[0], position)
+	    for (var i=1; i<segs.length; i++) {
+		root = List.create(
+		    Symbol.builtin('.'),
+		    root,
+		    segs[i]
+		)
+	    }
+	    root['source-position'] = position
+	    return root
 	}
 
 	else if (/##[^#]+#[^#]+/.test(string)) {
@@ -856,9 +904,11 @@ function bindLocal(e, s) {
 }
 
 function bindGlobal(e, s) {
-    var rs = s.reify()
-    var qs = rs.qualify(e.name)
-    Env.findOrDie(e.name).putSymbol(s, qs)
+    var rs      = s.reify()
+    var qs      = rs.qualify(e.name)
+    var rootEnv = Env.findOrDie(e.name)
+    rootEnv.putSymbol(s, qs)
+    rootEnv.addExport(rs)    
     return qs
 }
 
@@ -1254,14 +1304,55 @@ function expandSpecialForm(e, x, n) {
     case 'unwind-protect':
 	throw Error('not implemented')
 
-    case 'import':
-	throw Error('not implemented')
-
     case 'js*':
 	return List.create(
 	    Symbol.builtin('js*'),
 	    expandSexp(e, x.rest().first())
 	)
+
+    case 'require':
+	var options = {}
+	var name    = x.rest().first().toString()
+	var args    = x.rest().rest().toArray()
+	var env     = Env.findOrDie(name)
+	var exports = env.exports
+
+	for (var i=0; i<args.length; i+=2) {
+	    options[args[i]] = args[i+1]
+	}
+
+	options.prefix = options.prefix || ""
+
+	if (options.only) {
+	    var names = {}
+	    options.only.forEach(function(x) {names[x] = true })
+	    var accept = function(sym) {
+		return !!names[sym]
+	    }
+	}
+
+	else if (options.exclude) {	    
+	    var names = {}
+	    options.except.forEach(function(x) {name[x] = true})
+	    var accept = function(sym) {
+		return !names[sym]
+	    }
+	}
+
+	else {
+	    var accept = function(x) { return true }
+	}
+
+	for (var i=0; i<exports.length; i++) {	    
+	    var symbol = exports[i]
+	    if (accept(symbol)) {
+		var denotation = env.getSymbol(symbol)
+		var alias      = new Symbol.Simple(options.prefix + symbol)
+		e.putSymbol(alias, denotation)
+	    }	    
+	}
+
+	return namespace + " required"
 
     }
 
@@ -1387,9 +1478,7 @@ var NULL_LABEL = normalizeLabel(null)
 
 function normalizeSexp(sexp) {
     if (sexp instanceof Keyword) {
-	return ['CALL', 
-		['GLOBAL', 'reno', 'keyword'],
-		[['CONST', sexp.name]]]
+	return ['KEYWORD', sexp.name]
     }
 
     if (sexp instanceof Symbol.Simple) {
@@ -2070,6 +2159,10 @@ Emitter.prototype = {
 
 	switch(tag) {
 
+	case 'KEYWORD':
+	    this.write('RT["reno::keyword"](' + JSON.stringify(a) + ')')
+	    break
+
 	case 'IF':	    
 	    this.write('if (')
 	    this.emit(a)
@@ -2105,7 +2198,13 @@ Emitter.prototype = {
 	case 'PROPERTY':
 	    this.emit(a)
 	    this.write('[')
-	    this.emit(b)
+
+	    if (b[0] == 'KEYWORD') {
+		this.write(JSON.stringify(b[1]))
+	    } else {
+		this.emit(b)
+	    }
+
 	    this.write(']')
 	    break
 
@@ -2365,7 +2464,7 @@ Generic.addMethods(
     },
 
     Symbol.Tagged, function(x, p, e) {
-	p.write(x.symbol)
+	_print(x.symbol, p, e)
     },
 
     Symbol.Simple, function(x, p, e) {
@@ -2399,6 +2498,46 @@ function println() {
     _print_sequence(arguments, RT['reno::*out*'], false)
     newline()
 }
+
+// list functions
+
+var cons    = Generic({name: "cons", index: 1})
+var first   = Generic({name: "first"})
+var rest    = Generic({name: "rest"})
+var isEmpty = Generic({name: "empty?"})
+
+Generic.addMethods(
+    cons,
+    null, function(x, xs) { return List.create(x) },
+    List, function(x, xs) { return new List.Cons(x, xs) },
+    Array, function(x, xs) { return new List.Cons(x, List.fromArray(xs)) }
+)
+
+Generic.addMethods(
+    first,
+    List.Cons, function(x) { return x.head },
+    Array,     function(x) { return x[0] }
+)
+
+Generic.addMethods(
+    rest,
+    List.Cons, function(x) { return x.tail },
+    Array, function(x) { 
+	var ls = new List.Nil
+	var i = x.length
+	while (i>1) { i--; ls = new List.Cons(x[i], ls) }
+	return ls
+    }
+)
+
+Generic.addMethods(
+    isEmpty,
+    null, function(_) { return true },
+    List.Nil, function(_) { return true },
+    List.Cons, function(x) { return false },    
+    Array, function(x) { return x.length == 0 }
+)
+
 
 
 // END reno.generic.js
@@ -2444,20 +2583,21 @@ function publish(key, data) {
 
 var RT = {
 
-    'reno::*env*'  : null,
-    'reno::*out*'  : null /* defined at end of file */,
-    'reno::window' : null /* defined at end of file */,	
+    'reno::*load-path*' : [""],
+    'reno::*env*'       : null,
+    'reno::*out*'       : null /* defined at end of file */,
+    'reno::window'      : null /* defined at end of file */,	
     
     'reno::macroexpand-1' : null,
     'reno::macroexpand' : null,
     'reno::expand' : null,
 
-    'reno::List' : List,
-    'reno::Symbol' : Symbol,
+    'reno::List'    : List,
+    'reno::Symbol'  : Symbol,
     'reno::Keyword' : Keyword,
-    'reno::pr' : pr,
-    'reno::prn' : prn,
-    'reno::print' : print,
+    'reno::pr'      : pr,
+    'reno::prn'     : prn,
+    'reno::print'   : print,
     'reno::println' : println,
     'reno::newline' : newline,    
 
@@ -2692,10 +2832,10 @@ var RT = {
 	return f.apply(null, args)
     },   
 
-    'reno::first'  : function(xs) { return xs.first() },
-    'reno::rest'   : function(xs) { return xs.rest() },
-    'reno::empty?' : function(xs) { return xs.isEmpty() },
-    'reno::cons'   : function(x, xs) { return xs.cons(x) }
+    'reno::first'  : first,
+    'reno::rest'   : rest,
+    'reno::empty?' : isEmpty,
+    'reno::cons'   : cons
 
 }
 
@@ -2739,9 +2879,26 @@ if (typeof process == 'undefined') {
 
 }
 
-RT['reno::window'] = typeof window == 'undefined' ? null : window
-    
+if (typeof window != 'undefined') {
+    RT['reno::window'] = window
+} 
 
+if (typeof __dirname != 'undefined') {
+    var path = require('path')
+    RT['reno::*load-path*'].push(path.dirname(process.argv[1]))
+    RT['reno::*load-path*'].push(__dirname)
+    RT['reno::slurp'] = function(filename) {
+	var fs    = require('fs')
+	var path  = require('path')
+	var paths = RT['reno::*load-path*']
+	for (var i=0; i<paths.length; i++) {
+	    var abspath = path.join(paths[i], filename)
+	    var stats   = fs.lstatSync(abspath)
+	    if (stats.isFile()) { return fs.readFileSync(abspath, 'utf8') }
+	}
+	throw Error('file not found: ' + filename) 
+    }
+}
 
 // END reno.runtime.js
 
@@ -2762,15 +2919,45 @@ RT['reno::macroexpand'] = function(sexp) {
 }
 
 var specialForms = [
-    'define*', 'define-macro*',
+    'define*', 'define-macro*', 
     'quote', 'quasiquote', 'unquote', 'unquote-splicing',
     'fn*', 'let*', 'letrec*', 'do', 'if', 'set',
-    'block', 'loop', 'return-from', 'unwind-protect', 'throw', 'js*'
+    'block', 'loop', 'return-from', 'unwind-protect', 'throw', 'js*',
+    'require'
 ]
 
 specialForms.forEach(function(name) {
     reno.putSymbol(new Symbol.Simple(name), name)
 })
+
+for (var v in RT) {
+    var segs      = v.split("::")
+    var namespace = segs[0]
+    var name      = segs[1]
+    var sym       = new Symbol.Simple(name)
+    var qsym      = new Symbol.Qualified(namespace, name)
+    Env.findOrCreate(namespace).putSymbol(sym, qsym)
+}
+
+function loadTopLevel(config) {
+    var src    = config.src
+    var env    = config.env
+    var origin = config.origin
+
+    var previousEnv = RT['reno::*env*']
+
+    try {
+	RT['reno::*env*'] = env
+	expandTopLevel({
+	    reader : Reader.create({input: src, origin: origin})
+	})	
+    }
+
+    finally {
+	RT['reno::*env*'] = previousEnv
+    }
+
+}
 
 function expandTopLevel(config) {
     var rdr       = config.reader 
@@ -2794,15 +2981,8 @@ function expandTopLevel(config) {
 
 	    else if (maybeResolveToDefineMacro(env, sexp)) {
 
-		println('[WTF SEXP1]')
-		prn(sexp)
-		newline()
-
 		var sym = sexp.rest().first()
 		var def = sexp.rest().rest().first()			
-		println('[WTF SEXP2]')
-		prn(def)
-		newline()
 
 		var esexp    = expand(env, def)
 
@@ -2873,14 +3053,11 @@ function compileFile(filename, main) {
 }
 
 function compileReader(reader, main) {    
-    var ebuf = []
+    var ebuf = [reno_preamble]
     var mbuf = []
 
     function handleExpression(data) {
 	ebuf.push(data.js)
-	println('[HANDLE_EXPRESSION]')
-	println(data.js)
-	newline()
     }
 
     function handleMacro(data) {
@@ -2914,23 +3091,22 @@ function compileReader(reader, main) {
 	newline()
     }
 
-    subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    // subscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     subscribe('reno:emit-toplevel-expression', handleExpression)
-    subscribe('reno:emit-toplevel-macro', handleMacro)
-    subscribe('reno:compile', handleCompile)
-    subscribe('reno:normalize', handleNormalize)
-    subscribe('reno:expand', handleExpansion)
-
+    // subscribe('reno:emit-toplevel-macro', handleMacro)
+    // subscribe('reno:compile', handleCompile)
+    // subscribe('reno:normalize', handleNormalize)
+    // subscribe('reno:expand', handleExpansion)
     // skip env creation for now
 
     expandTopLevel({
 	reader : reader,
-	env    : reno	
+	env    : RT['reno::*env*']
     }) 
 
-    unsubscribe('reno:macroexpand-toplevel-sexp', handleSexp)
+    // unsubscribe('reno:macroexpand-toplevel-sexp', handleSexp)
     unsubscribe('reno:emit-toplevel-expression', handleExpression)
-    unsubscribe('reno:emit-toplevel-macro', handleMacro)
+    // unsubscribe('reno:emit-toplevel-macro', handleMacro)
 
     if (main) {
 	ebuf.push('RT[' + JSON.stringify(main) + ']()')
@@ -2940,6 +3116,16 @@ function compileReader(reader, main) {
 
 }
 
+// first things first
+// we load reno
+
+var reno_src = RT['reno::slurp']('reno.reno')
+var reno_preamble = compileReader(
+    Reader.create({input: reno_src, origin: 'reno.reno'})   
+)
+
 exports.compileFile = compileFile
+
+console.log(process.argv)
 
 // END reno.main.js

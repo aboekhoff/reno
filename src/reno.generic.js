@@ -135,7 +135,7 @@ Generic.addMethods(
     },
 
     Symbol.Tagged, function(x, p, e) {
-	p.write(x.symbol)
+	_print(x.symbol, p, e)
     },
 
     Symbol.Simple, function(x, p, e) {
@@ -169,4 +169,44 @@ function println() {
     _print_sequence(arguments, RT['reno::*out*'], false)
     newline()
 }
+
+// list functions
+
+var cons    = Generic({name: "cons", index: 1})
+var first   = Generic({name: "first"})
+var rest    = Generic({name: "rest"})
+var isEmpty = Generic({name: "empty?"})
+
+Generic.addMethods(
+    cons,
+    null, function(x, xs) { return List.create(x) },
+    List, function(x, xs) { return new List.Cons(x, xs) },
+    Array, function(x, xs) { return new List.Cons(x, List.fromArray(xs)) }
+)
+
+Generic.addMethods(
+    first,
+    List.Cons, function(x) { return x.head },
+    Array,     function(x) { return x[0] }
+)
+
+Generic.addMethods(
+    rest,
+    List.Cons, function(x) { return x.tail },
+    Array, function(x) { 
+	var ls = new List.Nil
+	var i = x.length
+	while (i>1) { i--; ls = new List.Cons(x[i], ls) }
+	return ls
+    }
+)
+
+Generic.addMethods(
+    isEmpty,
+    null, function(_) { return true },
+    List.Nil, function(_) { return true },
+    List.Cons, function(x) { return false },    
+    Array, function(x) { return x.length == 0 }
+)
+
 

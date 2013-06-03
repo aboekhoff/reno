@@ -175,6 +175,10 @@ Emitter.prototype = {
 
 	switch(tag) {
 
+	case 'KEYWORD':
+	    this.write('RT["reno::keyword"](' + JSON.stringify(a) + ')')
+	    break
+
 	case 'IF':	    
 	    this.write('if (')
 	    this.emit(a)
@@ -210,7 +214,13 @@ Emitter.prototype = {
 	case 'PROPERTY':
 	    this.emit(a)
 	    this.write('[')
-	    this.emit(b)
+
+	    if (b[0] == 'KEYWORD') {
+		this.write(JSON.stringify(b[1]))
+	    } else {
+		this.emit(b)
+	    }
+
 	    this.write(']')
 	    break
 
