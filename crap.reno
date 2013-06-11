@@ -1,2 +1,0 @@
-(require reno)
-(define (useless) (prn "why the fuck are you calling this function?"))

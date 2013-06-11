@@ -218,12 +218,14 @@ function compileReader(reader, main) {
 
 */
 
-function compileFile(filename, main) {
+var reno_preamble = ""
+
+function compileModule(module, main) {
     var buf = [reno_preamble]    
-    function append(js) { buf.push(js) }
-    subscribe('reno::emit-toplevel-expression', append)
-    Env.load(filename)
-    unsubscribe('reno::emit-toplevel-expression', append)
+    function append(data) { buf.push(data.js) }
+    subscribe('reno:emit-toplevel-expression', append)
+    Env.load(module)
+    unsubscribe('reno:emit-toplevel-expression', append)
     if (main) {	ebuf.push('\nRT[' + JSON.stringify(main) + ']()') }
     return buf.join("")
 }
@@ -231,17 +233,30 @@ function compileFile(filename, main) {
 // first things first
 // we load reno
 
-var reno_src = RT['reno::slurp']('reno.reno')
-var reno_preamble = compileReader(
-    Reader.create({input: reno_src, origin: 'reno.reno'})   
-)
+function loadPreamble() {
+    var buf = [reno_preamble]    
+    function append(data) { buf.push(data.js) }
+    subscribe('reno:emit-toplevel-expression', append)
+    Env.reload('reno')
+    unsubscribe('reno:emit-toplevel-expression', append)
+    if (main) {	ebuf.push('\nRT[' + JSON.stringify(main) + ']()') }
+    return buf.join("")
+}
 
-exports.compileFile = compileFile
+//var reno_src = RT['reno::slurp']('reno.reno')
+//var reno_preamble = compileReader(
+//    Reader.create({input: reno_src, origin: 'reno.reno'})   
+//)
 
 if (process.argv.length > 2) {
+    console.log(RT['reno::*load-path*'])
+    loadPreamble()
+
     var fs      = require('fs')
     var target  = process.argv[2]
-    var outfile = target.replace(/\.reno$/, ".js")
-    var program = reno.compileFile(src, process.argv[3])    
+    var prefix  = target.replace(/\.reno$/, '')
+    var main    = process.argv[3]
+    var program = compileModule(target, main)    
+    var outfile = prefix + '.js'
     fs.writeFileSync(outfile, program)
 }

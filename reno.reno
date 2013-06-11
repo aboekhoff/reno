@@ -74,5 +74,5 @@
       `(define* ,(first head) (fn ,(rest head) (block ,name ,@tail)))     
       `(define* ,head ,(first tail))))
 
-; (prn "reno.reno was here")
+(prn "reno.reno was here")
 

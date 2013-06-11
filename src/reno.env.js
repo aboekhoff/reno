@@ -27,22 +27,29 @@ Env.findOrDie = function(name) {
 }
 
 Env.load = function(name) {
-    if (!Env.registry[name]) {
-	var fs   = require('fs')
-	var file = Env.nameToFile(name)
-	var src  = RT['reno::slurp'](file)
-	var env  = Env.create(name)
-	loadTopLevel({
-	    src    : src,
-	    origin : file,
-	    env    : env
-	})
-    }
+    if (!Env.registry[name]) { Env.reload(name) }
     return Env.registry[name]
 }
 
+Env.reload = function(name) {
+    var fs   = require('fs')
+    var file = Env.nameToFile(name)
+    var src  = RT['reno::slurp'](file)
+    var env  = Env.findOrCreate(name)
+    loadTopLevel({
+	src    : src,
+	origin : file,
+	env    : env
+    })
+    return env
+}
+
+Env.nameToModule = function(name) {
+    return /\.reno$/.test(name) ? name.replace(/\.reno$/, '') : name
+}
+
 Env.nameToFile = function(name) {
-    return /\.reno$/.test(name) ? name : ".reno"
+    return /\.reno$/.test(name) ? name : name + ".reno"
 }
 
 Env.toKey = function(obj) {

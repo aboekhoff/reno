@@ -2,7 +2,7 @@
 
 var RT = {
 
-    'reno::*load-path*' : [""],
+    'reno::*load-path*' : ["."],
     'reno::*env*'       : null,
     'reno::*out*'       : null /* defined at end of file */,
     'reno::window'      : null /* defined at end of file */,	
@@ -312,8 +312,9 @@ if (typeof __dirname != 'undefined') {
 	var paths = RT['reno::*load-path*']
 	for (var i=0; i<paths.length; i++) {
 	    var abspath = path.join(paths[i], filename)
-	    var stats   = fs.lstatSync(abspath)
-	    if (stats.isFile()) { return fs.readFileSync(abspath, 'utf8') }
+	    if (fs.existsSync(abspath)) { 
+		return fs.readFileSync(abspath, 'utf8') 
+	    }
 	}
 	throw Error('file not found: ' + filename) 
     }

@@ -300,10 +300,6 @@ Env.LABEL_PREFIX  = "L:"
 
 Env.registry = {}
 
-Env.load = function(name) {
-    throw Error('not implemented')
-}
-
 Env.create = function(name) {
     var env = Env.registry[name] = new Env(new Dict(), name)
     env.putSymbol(new Symbol.Simple('require'), 'require')
@@ -323,22 +319,29 @@ Env.findOrDie = function(name) {
 }
 
 Env.load = function(name) {
-    if (!Env.registry[name]) {
-	var fs   = require('fs')
-	var file = Env.nameToFile(name)
-	var src  = RT['reno::slurp'](file)
-	var env  = Env.create(name)
-	loadTopLevel({
-	    src    : src,
-	    origin : file,
-	    env    : env
-	})
-    }
+    if (!Env.registry[name]) { Env.reload(name) }
     return Env.registry[name]
 }
 
+Env.reload = function(name) {
+    var fs   = require('fs')
+    var file = Env.nameToFile(name)
+    var src  = RT['reno::slurp'](file)
+    var env  = Env.findOrCreate(name)
+    loadTopLevel({
+	src    : src,
+	origin : file,
+	env    : env
+    })
+    return env
+}
+
+Env.nameToModule = function(name) {
+    return /\.reno$/.test(name) ? name.replace(/\.reno$/, '') : name
+}
+
 Env.nameToFile = function(name) {
-    return name.toString() + ".reno"
+    return /\.reno$/.test(name) ? name : name + ".reno"
 }
 
 Env.toKey = function(obj) {
@@ -914,7 +917,7 @@ function bindGlobal(e, s) {
 }
 
 function bindMacro(e, s, m) {
-    var rs  = s.reify()
+    var rs = s.reify()
     e = Env.findOrDie(e.name)
     e.putSymbol(rs, m)
     e.addExport(rs)
@@ -2586,7 +2589,7 @@ function publish(key, data) {
 
 var RT = {
 
-    'reno::*load-path*' : [""],
+    'reno::*load-path*' : ["."],
     'reno::*env*'       : null,
     'reno::*out*'       : null /* defined at end of file */,
     'reno::window'      : null /* defined at end of file */,	
@@ -2896,8 +2899,9 @@ if (typeof __dirname != 'undefined') {
 	var paths = RT['reno::*load-path*']
 	for (var i=0; i<paths.length; i++) {
 	    var abspath = path.join(paths[i], filename)
-	    var stats   = fs.lstatSync(abspath)
-	    if (stats.isFile()) { return fs.readFileSync(abspath, 'utf8') }
+	    if (fs.existsSync(abspath)) { 
+		return fs.readFileSync(abspath, 'utf8') 
+	    }
 	}
 	throw Error('file not found: ' + filename) 
     }
@@ -3053,6 +3057,8 @@ function p(x) {
     println(inspect(x, false, null))
 }
 
+/*
+
 function compileFile(filename, main) {
     var src = require('fs').readFileSync(filename, 'utf8')
     var rdr = Reader.create({input: src, origin: filename})
@@ -3123,15 +3129,49 @@ function compileReader(reader, main) {
 
 }
 
+*/
+
+var reno_preamble = ""
+
+function compileModule(module, main) {
+    var buf = [reno_preamble]    
+    function append(data) { buf.push(data.js) }
+    subscribe('reno:emit-toplevel-expression', append)
+    Env.load(module)
+    unsubscribe('reno:emit-toplevel-expression', append)
+    if (main) {	ebuf.push('\nRT[' + JSON.stringify(main) + ']()') }
+    return buf.join("")
+}
+
 // first things first
 // we load reno
 
-var reno_src = RT['reno::slurp']('reno.reno')
-var reno_preamble = compileReader(
-    Reader.create({input: reno_src, origin: 'reno.reno'})   
-)
+function loadPreamble() {
+    var buf = [reno_preamble]    
+    function append(data) { buf.push(data.js) }
+    subscribe('reno:emit-toplevel-expression', append)
+    Env.reload('reno')
+    unsubscribe('reno:emit-toplevel-expression', append)
+    if (main) {	ebuf.push('\nRT[' + JSON.stringify(main) + ']()') }
+    return buf.join("")
+}
 
-exports.compileFile = compileFile
-console.log(process.argv)
+//var reno_src = RT['reno::slurp']('reno.reno')
+//var reno_preamble = compileReader(
+//    Reader.create({input: reno_src, origin: 'reno.reno'})   
+//)
+
+if (process.argv.length > 2) {
+    console.log(RT['reno::*load-path*'])
+    loadPreamble()
+
+    var fs      = require('fs')
+    var target  = process.argv[2]
+    var prefix  = target.replace(/\.reno$/, '')
+    var main    = process.argv[3]
+    var program = compileModule(target, main)    
+    var outfile = prefix + '.js'
+    fs.writeFileSync(outfile, program)
+}
 
 // END reno.main.js
