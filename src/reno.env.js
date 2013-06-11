@@ -8,10 +8,6 @@ Env.LABEL_PREFIX  = "L:"
 
 Env.registry = {}
 
-Env.load = function(name) {
-    throw Error('not implemented')
-}
-
 Env.create = function(name) {
     var env = Env.registry[name] = new Env(new Dict(), name)
     env.putSymbol(new Symbol.Simple('require'), 'require')
@@ -46,7 +42,7 @@ Env.load = function(name) {
 }
 
 Env.nameToFile = function(name) {
-    return name.toString() + ".reno"
+    return /\.reno$/.test(name) ? name : ".reno"
 }
 
 Env.toKey = function(obj) {

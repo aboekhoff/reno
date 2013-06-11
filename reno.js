@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // BEGIN reno.list.js
 
 function List() {}
@@ -913,8 +914,10 @@ function bindGlobal(e, s) {
 }
 
 function bindMacro(e, s, m) {
-    var rs = s.reify()
-    Env.findOrDie(e.name).putSymbol(s, m)
+    var rs  = s.reify()
+    e = Env.findOrDie(e.name)
+    e.putSymbol(rs, m)
+    e.addExport(rs)
     return rs
 }
 
@@ -2927,7 +2930,9 @@ var specialForms = [
 ]
 
 specialForms.forEach(function(name) {
-    reno.putSymbol(new Symbol.Simple(name), name)
+    var sym = new Symbol.Simple(name)
+    reno.putSymbol(sym, name)
+    reno.addExport(sym)
 })
 
 for (var v in RT) {
@@ -2936,7 +2941,9 @@ for (var v in RT) {
     var name      = segs[1]
     var sym       = new Symbol.Simple(name)
     var qsym      = new Symbol.Qualified(namespace, name)
-    Env.findOrCreate(namespace).putSymbol(sym, qsym)
+    var env       = Env.findOrCreate(namespace)
+    env.putSymbol(sym, qsym)
+    env.addExport(sym)
 }
 
 function loadTopLevel(config) {
@@ -2999,7 +3006,7 @@ function expandTopLevel(config) {
 		    }		    
 		})(submacro)
 
-		var qsym = bindMacro(env, sym, macro)
+		var qsym = bindMacro(env, sym, macro)				
 
 		publish('reno:emit-toplevel-macro', {
 		    symbol: qsym,
@@ -3109,10 +3116,10 @@ function compileReader(reader, main) {
     // unsubscribe('reno:emit-toplevel-macro', handleMacro)
 
     if (main) {
-	ebuf.push('RT[' + JSON.stringify(main) + ']()')
+	ebuf.push('\nRT[' + JSON.stringify(main) + ']()')
     }
 
-    return ebuf.join("\n")
+    return ebuf.join("")
 
 }
 
@@ -3125,7 +3132,6 @@ var reno_preamble = compileReader(
 )
 
 exports.compileFile = compileFile
-
 console.log(process.argv)
 
 // END reno.main.js

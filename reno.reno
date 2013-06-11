@@ -1,3 +1,6 @@
+;; this initial define-macro wrapper of ##reno#define-macro*
+;; 
+
 (define-macro* define-macro 
   (fn* (sexp _ _)
        (let* ((tail (.rest sexp))
@@ -71,4 +74,5 @@
       `(define* ,(first head) (fn ,(rest head) (block ,name ,@tail)))     
       `(define* ,head ,(first tail))))
 
-(prn "reno.reno was here")
+; (prn "reno.reno was here")
+

@@ -30,7 +30,7 @@ BROWSER_RUNTIME_TARGETS = [
 
 // node reno
 
-var buf = []
+var buf = ["#!/usr/bin/env node"]
 
 for (var i=0; i<COMPILER_TARGETS.length; i++) {
     var target = COMPILER_TARGETS[i]

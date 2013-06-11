@@ -69,8 +69,10 @@ function bindGlobal(e, s) {
 }
 
 function bindMacro(e, s, m) {
-    var rs = s.reify()
-    Env.findOrDie(e.name).putSymbol(s, m)
+    var rs  = s.reify()
+    e = Env.findOrDie(e.name)
+    e.putSymbol(rs, m)
+    e.addExport(rs)
     return rs
 }
 

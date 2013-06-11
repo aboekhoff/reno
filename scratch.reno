@@ -1,2 +1,4 @@
 (require reno)
-(prn :woot!)
+(require crap :prefix crap:)
+(prn (crap:useless))
+

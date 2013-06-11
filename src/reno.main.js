@@ -21,7 +21,9 @@ var specialForms = [
 ]
 
 specialForms.forEach(function(name) {
-    reno.putSymbol(new Symbol.Simple(name), name)
+    var sym = new Symbol.Simple(name)
+    reno.putSymbol(sym, name)
+    reno.addExport(sym)
 })
 
 for (var v in RT) {
@@ -30,7 +32,9 @@ for (var v in RT) {
     var name      = segs[1]
     var sym       = new Symbol.Simple(name)
     var qsym      = new Symbol.Qualified(namespace, name)
-    Env.findOrCreate(namespace).putSymbol(sym, qsym)
+    var env       = Env.findOrCreate(namespace)
+    env.putSymbol(sym, qsym)
+    env.addExport(sym)
 }
 
 function loadTopLevel(config) {
@@ -93,7 +97,7 @@ function expandTopLevel(config) {
 		    }		    
 		})(submacro)
 
-		var qsym = bindMacro(env, sym, macro)
+		var qsym = bindMacro(env, sym, macro)				
 
 		publish('reno:emit-toplevel-macro', {
 		    symbol: qsym,
@@ -139,6 +143,8 @@ function p(x) {
     var inspect = require('util').inspect
     println(inspect(x, false, null))
 }
+
+/*
 
 function compileFile(filename, main) {
     var src = require('fs').readFileSync(filename, 'utf8')
@@ -203,11 +209,23 @@ function compileReader(reader, main) {
     // unsubscribe('reno:emit-toplevel-macro', handleMacro)
 
     if (main) {
-	ebuf.push('RT[' + JSON.stringify(main) + ']()')
+	ebuf.push('\nRT[' + JSON.stringify(main) + ']()')
     }
 
-    return ebuf.join("\n")
+    return ebuf.join("")
 
+}
+
+*/
+
+function compileFile(filename, main) {
+    var buf = [reno_preamble]    
+    function append(js) { buf.push(js) }
+    subscribe('reno::emit-toplevel-expression', append)
+    Env.load(filename)
+    unsubscribe('reno::emit-toplevel-expression', append)
+    if (main) {	ebuf.push('\nRT[' + JSON.stringify(main) + ']()') }
+    return buf.join("")
 }
 
 // first things first
@@ -220,4 +238,10 @@ var reno_preamble = compileReader(
 
 exports.compileFile = compileFile
 
-console.log(process.argv)
+if (process.argv.length > 2) {
+    var fs      = require('fs')
+    var target  = process.argv[2]
+    var outfile = target.replace(/\.reno$/, ".js")
+    var program = reno.compileFile(src, process.argv[3])    
+    fs.writeFileSync(outfile, program)
+}
